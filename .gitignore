@@ -1,1 +1,4 @@
-.venv/
+.venv
+dist
+tests/files
+tests/cache
