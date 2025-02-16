@@ -3,31 +3,29 @@ import logging
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from tarfile import TarFile
 from zipfile import ZipFile
 
 from packaging.metadata import parse_email
 from packaging.utils import (
+    NormalizedName,
     canonicalize_name,
     canonicalize_version,
     parse_sdist_filename,
     parse_wheel_filename,
 )
-from sqlmodel import Session, select
 
-from .database import get_one_or_create
-from .models import ProjectDB, ProjectFileDB
+from .models import ProjectFile
 
 logger = logging.getLogger(__name__)
 
 
-class LoaderError(Exception):
+class ProjectReaderError(Exception):
     pass
 
 
-class UnhandledFileTypeError(LoaderError):
+class UnhandledFileTypeError(ProjectReaderError):
     pass
 
 
@@ -44,7 +42,7 @@ def read_project_metadata(file: Path) -> bytes:
         with ZipFile(file) as zip, zip.open(f"{subdir}/METADATA") as fp:
             return fp.read()
 
-    elif file.suffixes[-2:] == [".tar", ".gz"]:
+    elif file.name.endswith(".tar.gz"):
         parse_sdist_filename(file.name)
         # https://packaging.python.org/en/latest/specifications/source-distribution-format/
         subdir = file.name.removesuffix(".tar.gz")
@@ -71,32 +69,36 @@ class ProjectFileReader:
     cache_dir: Path
 
     def iter_files(self) -> Iterator[tuple[str, Path]]:
-        for file in self.files_dir.rglob("*.*"):
-            index = file.relative_to(self.files_dir).parent.as_posix().removeprefix(".")
-            yield index, file
+        for root, _, files in os.walk(self.files_dir):
+            root_dir = Path(root)
+            if root_dir == self.cache_dir:
+                continue
+            index = f"{root_dir.relative_to(self.files_dir).as_posix()}/".lstrip(".")
+            for file in files:
+                yield index, root_dir / file
 
-    def read(self, file: Path, index: str) -> tuple[str, ProjectFileDB]:
-        metadata_content = read_project_metadata(file)
-
+    def read(self, file: Path) -> tuple[NormalizedName, str, ProjectFile]:
         try:
+            metadata_content = read_project_metadata(file)
             metadata, _ = parse_email(metadata_content)
             name = canonicalize_name(metadata["name"])  # type: ignore
             version = canonicalize_version(metadata["version"])  # type: ignore
+        except ProjectReaderError:
+            raise
         except Exception as e:
             raise InvalidFileError from e
 
-        dist = ProjectFileDB(
-            project_version=version,
+        dist = ProjectFile(
             filename=file.name,
             size=file.stat().st_size,
-            url=f"{index}/{file.name}",
+            url=file.relative_to(self.files_dir).as_posix(),
             hashes=_get_file_hashes(file),
             requires_python=metadata.get("requires_python"),
             core_metadata={"sha256": hashlib.sha256(metadata_content).hexdigest()},
         )
 
         self.save_metadata(file, metadata_content)
-        return name, dist
+        return name, version, dist
 
     def save_metadata(self, file: Path, metadata_content: bytes) -> None:
         metadata_file = self.cache_dir.joinpath(file.relative_to(self.files_dir))
@@ -105,40 +107,3 @@ class ProjectFileReader:
         metadata_file.write_bytes(metadata_content)
         file_stat = file.stat()
         os.utime(metadata_file, (file_stat.st_atime, file_stat.st_mtime))
-
-
-def update_db(session: Session, files_dir: Path, cache_dir: Path) -> None:
-    project_file_reader = ProjectFileReader(files_dir, cache_dir)
-
-    @lru_cache(maxsize=512)
-    def project_id(name: str, index: str) -> int:
-        project = get_one_or_create(
-            session,
-            query=select(ProjectDB).where(ProjectDB.index == index).where(ProjectDB.name == name),
-            factory=lambda: ProjectDB(index=index, name=name),
-        )
-        assert project.id is not None
-        return project.id
-
-    def create_project_and_distribution() -> ProjectFileDB:
-        project_name, distribution = project_file_reader.read(file, index)
-        distribution.project_id = project_id(project_name, index)
-        return distribution
-
-    for index, file in project_file_reader.iter_files():
-        try:
-            get_one_or_create(
-                session,
-                query=(
-                    select(ProjectFileDB.id)
-                    .where(ProjectDB.id == ProjectFileDB.project_id)
-                    .where(ProjectDB.index == index)
-                    .where(ProjectFileDB.filename == file.name)
-                ),
-                factory=create_project_and_distribution,
-            )
-        except UnhandledFileTypeError:
-            continue
-        except InvalidFileError as e:
-            logger.error(e)
-            continue
