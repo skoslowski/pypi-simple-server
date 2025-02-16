@@ -1,20 +1,41 @@
+from dataclasses import dataclass, fields
+from os import environ
 from pathlib import Path
 
-from pydantic import DirectoryPath
-from pydantic_settings import BaseSettings, SettingsConfigDict
+_NO_PATH = Path("???")
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PYPS_", env_file=".env")
+@dataclass
+class Config:
+    base_dir: Path = Path.cwd()
+    cache_dir: Path = _NO_PATH
 
-    base_dir: DirectoryPath = Path.cwd()
-    cache_dir: Path | None = None
-    files_url: str = "/files"
+    def __post_init__(self) -> None:
+        if self.cache_dir is _NO_PATH:
+            self.cache_dir = self.base_dir / ".cache"
 
     @property
     def database_file(self) -> Path:
-        return self.cache_dir_.absolute() / "database.sqlite"
+        return self.cache_dir.absolute() / "database.sqlite"
 
-    @property
-    def cache_dir_(self) -> Path:
-        return self.cache_dir or self.base_dir / ".cache"
+
+def _read_dot_env() -> dict[str, str]:
+    dot_env_file = Path(".env")
+    if not dot_env_file.exists():
+        return {}
+    return {
+        kv[0].strip(): kv[2].strip()
+        for line in dot_env_file.read_text().splitlines()
+        if (kv := line.partition("#")[0].partition("="))[1]
+    }
+
+
+def load_config() -> Config:
+    config = Config()
+    dot_env = _read_dot_env()
+    for field in fields(Config):
+        assert isinstance(field.type, type)
+        env_var = f"PYPS_{field.name}".upper()
+        if value := environ.get(env_var) or dot_env.get(env_var):
+            setattr(config, field.name, field.type(value))
+    return config

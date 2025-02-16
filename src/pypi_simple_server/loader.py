@@ -3,22 +3,20 @@ import logging
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from tarfile import TarFile
 from zipfile import ZipFile
 
 from packaging.metadata import parse_email
 from packaging.utils import (
+    NormalizedName,
     canonicalize_name,
     canonicalize_version,
     parse_sdist_filename,
     parse_wheel_filename,
 )
-from sqlmodel import Session, select
 
-from .database import get_one_or_create
-from .models import ProjectDB, ProjectFileDB
+from .models import ProjectDetail, ProjectFile
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +73,7 @@ class ProjectFileReader:
             index = file.relative_to(self.files_dir).parent.as_posix().removeprefix(".")
             yield index, file
 
-    def read(self, file: Path, index: str) -> tuple[str, ProjectFileDB]:
+    def read(self, file: Path, index: str) -> tuple[NormalizedName, str, ProjectFile]:
         metadata_content = read_project_metadata(file)
 
         try:
@@ -85,8 +83,7 @@ class ProjectFileReader:
         except Exception as e:
             raise InvalidFileError from e
 
-        dist = ProjectFileDB(
-            project_version=version,
+        dist = ProjectFile(
             filename=file.name,
             size=file.stat().st_size,
             url=f"{index}/{file.name}",
@@ -96,7 +93,7 @@ class ProjectFileReader:
         )
 
         self.save_metadata(file, metadata_content)
-        return name, dist
+        return name, version, dist
 
     def save_metadata(self, file: Path, metadata_content: bytes) -> None:
         metadata_file = self.cache_dir.joinpath(file.relative_to(self.files_dir))
@@ -107,38 +104,32 @@ class ProjectFileReader:
         os.utime(metadata_file, (file_stat.st_atime, file_stat.st_mtime))
 
 
-def update_db(session: Session, files_dir: Path, cache_dir: Path) -> None:
+Indexes = dict[str, dict[NormalizedName, ProjectDetail]]
+
+
+def update_db(files_dir: Path, cache_dir: Path) -> Indexes:
     project_file_reader = ProjectFileReader(files_dir, cache_dir)
 
-    @lru_cache(maxsize=512)
-    def project_id(name: str, index: str) -> int:
-        project = get_one_or_create(
-            session,
-            query=select(ProjectDB).where(ProjectDB.index == index).where(ProjectDB.name == name),
-            factory=lambda: ProjectDB(index=index, name=name),
-        )
-        assert project.id is not None
-        return project.id
+    indexes = Indexes()
 
-    def create_project_and_distribution() -> ProjectFileDB:
-        project_name, distribution = project_file_reader.read(file, index)
-        distribution.project_id = project_id(project_name, index)
-        return distribution
+    def add_file(index):
+        projects = indexes.setdefault(index, {})
+        detail = projects.setdefault(name, ProjectDetail(name=name))
+
+        detail.versions.add(version)
+        detail.files.add(dist)
 
     for index, file in project_file_reader.iter_files():
         try:
-            get_one_or_create(
-                session,
-                query=(
-                    select(ProjectFileDB.id)
-                    .where(ProjectDB.id == ProjectFileDB.project_id)
-                    .where(ProjectDB.index == index)
-                    .where(ProjectFileDB.filename == file.name)
-                ),
-                factory=create_project_and_distribution,
-            )
+            name, version, dist = project_file_reader.read(file, index)
+
+            add_file(index)
+            add_file("")
+
         except UnhandledFileTypeError:
             continue
         except InvalidFileError as e:
             logger.error(e)
             continue
+
+    return indexes
