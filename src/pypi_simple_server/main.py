@@ -13,7 +13,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from starlette.templating import Jinja2Templates
 
 from .config import BASE_DIR, CACHE_DIR
-from .loader import Database
+from .database import Database
 from .requests import MediaType, get_response_media_type
 from .responses import SimpleV1HTMLResponse, SimpleV1JSONResponse
 
@@ -66,8 +66,8 @@ async def ping(request: Request) -> PlainTextResponse:
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
-    database.update()
-    yield
+    with database:
+        yield
 
 
 static_files = StaticFiles()
