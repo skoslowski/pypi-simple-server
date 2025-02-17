@@ -3,8 +3,8 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
-from fastapi.testclient import TestClient
 from pypi_simple import PyPISimple
+from starlette.testclient import TestClient
 
 FILES_REQUIRED = [
     "pytest-8.3.4-py3-none-any.whl",

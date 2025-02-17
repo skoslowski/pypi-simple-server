@@ -2,7 +2,7 @@ import hashlib
 import logging
 import os
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tarfile import TarFile
 from zipfile import ZipFile
@@ -16,7 +16,7 @@ from packaging.utils import (
     parse_wheel_filename,
 )
 
-from .models import ProjectDetail, ProjectFile
+from .models import Project, ProjectDetail, ProjectFile, ProjectList
 
 logger = logging.getLogger(__name__)
 
@@ -107,29 +107,43 @@ class ProjectFileReader:
 Indexes = dict[str, dict[NormalizedName, ProjectDetail]]
 
 
-def update_db(files_dir: Path, cache_dir: Path) -> Indexes:
-    project_file_reader = ProjectFileReader(files_dir, cache_dir)
+@dataclass
+class Database:
+    files_dir: Path
+    cache_dir: Path
+    _indexes: Indexes = field(default_factory=dict, init=False, repr=False)
 
-    indexes = Indexes()
+    def update(self) -> Indexes:
+        project_file_reader = ProjectFileReader(self.files_dir, self.cache_dir)
 
-    def add_file(index):
-        projects = indexes.setdefault(index, {})
-        detail = projects.setdefault(name, ProjectDetail(name=name))
+        indexes = Indexes()
 
-        detail.versions.add(version)
-        detail.files.add(dist)
+        def add_file(index):
+            projects = indexes.setdefault(index, {})
+            detail = projects.setdefault(name, ProjectDetail(name=name))
 
-    for index, file in project_file_reader.iter_files():
-        try:
-            name, version, dist = project_file_reader.read(file, index)
+            detail.versions.add(version)
+            detail.files.add(dist)
 
-            add_file(index)
-            add_file("")
+        for index, file in project_file_reader.iter_files():
+            try:
+                name, version, dist = project_file_reader.read(file, index)
 
-        except UnhandledFileTypeError:
-            continue
-        except InvalidFileError as e:
-            logger.error(e)
-            continue
+                add_file(index)
+                add_file("")
 
-    return indexes
+            except UnhandledFileTypeError:
+                continue
+            except InvalidFileError as e:
+                logger.error(e)
+                continue
+
+        self._indexes = indexes
+        return indexes
+
+    def get_project_list(self, index: str) -> ProjectList:
+        projects = self._indexes.get(index, {})
+        return ProjectList(projects=[Project(name) for name in projects])
+
+    def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
+        return self._indexes.get(index, {}).get(project) or ProjectDetail(name=project)

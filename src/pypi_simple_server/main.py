@@ -1,173 +1,45 @@
 import logging
 from contextlib import asynccontextmanager
-from hashlib import md5
-from importlib.metadata import version
-from typing import Annotated
+from pathlib import Path
 
-from anyio import to_thread
-from fastapi import Depends, FastAPI, Request, Response
-from fastapi import Path as PathParam
-from fastapi.exceptions import HTTPException
-from fastapi.responses import PlainTextResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from packaging.utils import canonicalize_name
-from sqlmodel import Session
-from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
+from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
+from starlette.status import HTTP_404_NOT_FOUND
+from starlette.templating import Jinja2Templates
 
-from .config import Settings
-from .database import (
-    create_db_and_tables,
-    create_engine,
-    get_project_detail,
-    get_project_list,
-)
-from .dependencies.content_negotiation import MediaType, ResponseMediaTypeDep, SimpleV1JSONResponse
-from .dependencies.etag import ETagDepends
-from .loader import update_db
-from .models import ProjectDetail, ProjectList
-from .templates import jinja_env
-from .utils import FileMTimeWatcher
+from .config import BASE_DIR, CACHE_DIR
+from .loader import Database
+from .requests import MediaType, get_response_media_type
+from .responses import SimpleV1HTMLResponse, SimpleV1JSONResponse
 
 logger = logging.getLogger(__name__)
-settings = Settings()
-engine = create_engine(
-    url=f"sqlite:///{settings.database_file}",
-    connect_args={"check_same_thread": False},
-)
-templates = Jinja2Templates(env=jinja_env)
+templates = Jinja2Templates(Path(__file__).with_name("templates"))
+database = Database(BASE_DIR, CACHE_DIR)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Create and init database")
-    settings.database_file.parent.mkdir(parents=True, exist_ok=True)
-    create_db_and_tables(engine)
+async def index(request: Request) -> Response:
+    media_type = get_response_media_type(request)
+    index: str = request.path_params.get("index", "")
 
-    with Session(engine) as session:
-        await reload_index_data(session)
-
-    watcher = FileMTimeWatcher(settings.database_file)
-    watcher.start()
-
-    yield {"etag_gen": lambda: md5(str(watcher.mtime).encode()).hexdigest()}
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
-
-
-SessionDep = Annotated[Session, Depends(get_session)]
-
-
-app = FastAPI(
-    title="Python Package Index Simple-API Server",
-    version=version(__package__ or ""),
-    lifespan=lifespan,
-)
-
-
-@app.get("/ping", response_class=PlainTextResponse)
-async def ping():
-    return  # docker health-check
-
-
-@app.get("/reload", response_class=PlainTextResponse)
-async def reload_index_data(session: SessionDep):
-    logger.info("Scan files and update database")
-    await to_thread.run_sync(update_db, session, settings.base_dir, settings.cache_dir_)
-
-
-def index_get(path: str, summary: str):
-    return app.get(
-        path,
-        dependencies=[ETagDepends],
-        response_class=SimpleV1JSONResponse,
-        response_model=ProjectList,
-        response_model_exclude_none=True,
-        summary=summary,
-        responses={
-            HTTP_200_OK: {
-                "content": {MediaType.HTML_V1: {}},
-                "description": "Project Index either as HTML or JSON",
-            }
-        },
-    )
-
-
-def detail_get(path: str, summary: str):
-    return app.get(
-        path,
-        dependencies=[ETagDepends],
-        response_class=SimpleV1JSONResponse,
-        response_model=ProjectDetail,
-        response_model_exclude_none=True,
-        summary=summary,
-        responses={
-            HTTP_200_OK: {
-                "content": {MediaType.HTML_V1: {}},
-                "description": "Project Index either as HTML or JSON",
-            }
-        },
-    )
-
-
-IndexParam = PathParam(description="Name of a sub-index. Allows creating package namespace", examples=["sub"])
-ProjectParam = PathParam(description="Name of the project to show details for.", examples=["pytest"])
-
-
-@index_get("/simple/", summary="Project Index")
-async def index_root(
-    request: Request, response: Response, media_type: ResponseMediaTypeDep, session: SessionDep
-):
-    return await index(request, response, media_type, session, index=None)
-
-
-@detail_get("/simple/{project}/", summary="Root Project Detail")
-async def project_detail_root(
-    request: Request,
-    response: Response,
-    media_type: ResponseMediaTypeDep,
-    session: SessionDep,
-    project: str,
-):
-    return await project_detail(request, response, media_type, session, project, index=None)
-
-
-@index_get("/{index}/simple/", summary="Namespaced Project Index")
-async def index(
-    request: Request,
-    response: Response,
-    media_type: ResponseMediaTypeDep,
-    session: SessionDep,
-    index: str | None = IndexParam,
-):
-    project_list = await to_thread.run_sync(get_project_list, session, index)
-
+    project_list = database.get_project_list(index)
     if not project_list.projects:
-        raise HTTPException(HTTP_404_NOT_FOUND, detail="Can't find this index")
+        raise HTTPException(HTTP_404_NOT_FOUND)
 
     if media_type == MediaType.HTML_V1:
-        return templates.TemplateResponse(
-            request,
-            name="index.html",
-            context={"model": project_list},
-            media_type=media_type,
-            headers=response.headers,
-        )
-    return project_list
+        return SimpleV1HTMLResponse(request, "index.html", model=project_list)
+    return SimpleV1JSONResponse(project_list)
 
 
-@detail_get("/{index}/simple/{project}/", summary="Namespaced Project Detail")
-async def project_detail(
-    request: Request,
-    response: Response,
-    media_type: ResponseMediaTypeDep,
-    session: SessionDep,
-    project: str = ProjectParam,
-    index: str | None = IndexParam,
-):
+async def detail(request: Request) -> Response:
+    media_type = get_response_media_type(request)
+    index: str = request.path_params.get("index", "")
+    project: str = request.path_params.get("project", "")
+
     project_canonical = canonicalize_name(project)
     if project != project_canonical:
         return RedirectResponse(
@@ -175,23 +47,39 @@ async def project_detail(
             status_code=301,
         )
 
-    project_details = await to_thread.run_sync(get_project_detail, session, project_canonical, index)
-    for project_file in project_details.files:
-        project_file.url = str(request.url_for("files", path=project_file.url))
+    project_details = database.get_project_detail(project_canonical, index)
     if not project_details.files:
-        raise HTTPException(HTTP_404_NOT_FOUND, detail="Can't find this project")
+        raise HTTPException(HTTP_404_NOT_FOUND)
+    for project_file in project_details.files:
+        if project_file.url.startswith("http"):
+            continue
+        project_file.url = str(request.url_for("files", path=project_file.url))
 
     if media_type == MediaType.HTML_V1:
-        return templates.TemplateResponse(
-            request=request,
-            name="detail.html",
-            context={"model": project_details},
-            media_type=media_type,
-            headers=response.headers,
-        )
-    return project_details
+        return SimpleV1HTMLResponse(request, name="detail.html", model=project_details)
+    return SimpleV1JSONResponse(project_details)
 
 
-staticfiles = StaticFiles()
-staticfiles.all_directories += [settings.base_dir, settings.cache_dir_]
-app.mount(settings.files_url, staticfiles, name="files")
+async def ping(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("")
+
+
+@asynccontextmanager
+async def lifespan(app: Starlette):
+    database.update()
+    yield
+
+
+static_files = StaticFiles()
+static_files.all_directories += [BASE_DIR, CACHE_DIR]
+
+routes = [
+    Route("/simple/", endpoint=index),
+    Route("/{index:path}/simple/", endpoint=index),
+    Route("/simple/{project}/", endpoint=detail),
+    Route("/{index:path}/simple/{project}/", endpoint=detail),
+    Route("/ping", endpoint=ping),
+    Mount("/files", static_files, name="files"),
+]
+
+app = Starlette(routes=routes, lifespan=lifespan)
