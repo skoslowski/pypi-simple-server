@@ -3,6 +3,7 @@ Model for Simple Index data
 
 https://packaging.python.org/en/latest/specifications/simple-repository-api/
 """
+
 from collections.abc import Sequence
 from operator import attrgetter
 from typing import Annotated
@@ -46,17 +47,15 @@ class ProjectFile(Struct, omit_defaults=True):
 
 class ProjectDetail(Struct, kw_only=True):
     """details on project - /simple/$NORM_NAME/"""
+
     # PEP-629
     meta: Meta = Meta()
     # PEP-691
     name: NormalizedProjectName
     # PEP-700
-    versions: set[str] = set()
+    versions: Sequence[str] = list()
     # PEP-503
-    files: set[ProjectFile] = set()
-
-    def __hash__(self) -> int:
-        return hash(self.name)
+    files: Sequence[ProjectFile] = list()
 
 
 class Project(Struct):
@@ -69,7 +68,8 @@ class Project(Struct):
 
 class ProjectList(Struct):
     """list of project names, a.k.a. project index - /simple/"""
+
     # PEP-629
     meta: Meta = Meta()
     # PEP-503
-    projects: Sequence[Project] = SortedSet(key=attrgetter("name"))
+    projects: Sequence[Project] = list()

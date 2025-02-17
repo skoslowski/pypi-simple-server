@@ -112,6 +112,7 @@ BUILD_TABLE = """
     CREATE TABLE IF NOT EXISTS Distribution (
         "index" TEXT NOT NULL,
         "project" TEXT NOT NULL,
+        "filename" TEXT NOT NULL,
         "version" TEXT NOT NULL,
         "file" BLOB NOT NULL
     )
@@ -134,16 +135,18 @@ LOOKUP_ROOT_DETAIL = """
     SELECT version, file
     FROM Distribution
     WHERE "project" = ?
+    ORDER BY filename
 """
 
 LOOKUP_INDEX_DETAIL = """
     SELECT version, file
     FROM Distribution
     WHERE "project" = ? AND "index" = ?
+    ORDER BY filename
 """
 
 STORE_DIST = """
-    REPLACE INTO Distribution VALUES (?, ?, ?, ?)
+    REPLACE INTO Distribution VALUES (?, ?, ?, ?, ?)
 """
 
 
@@ -159,7 +162,7 @@ class Database:
         self.update()
         return self
 
-    def __exit__(self, a, b, c):
+    def __exit__(self, type, value, tb):
         self._con.close()
 
     def update(self) -> None:
@@ -170,7 +173,7 @@ class Database:
                 name, version, dist = project_file_reader.read(file, index)
                 data = msgspec.json.encode(dist)
                 with self._con as cur:
-                    cur.execute(STORE_DIST, (index, name, version, data))
+                    cur.execute(STORE_DIST, (index, name, file.name, version, data))
                     cur.commit()
 
             except UnhandledFileTypeError:
@@ -187,7 +190,8 @@ class Database:
             return ProjectList(projects=[Project(name) for (name,) in result])
 
     def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
-        detail = ProjectDetail(name=project)
+        files = list()
+        versions = set()
 
         with self._con as con:
             result = (
@@ -196,8 +200,8 @@ class Database:
                 else con.execute(LOOKUP_ROOT_DETAIL, (project,))
             )
             for version, data in result:
-                detail.versions.add(version)
+                versions.add(version)
                 file = msgspec.json.decode(data, type=ProjectFile)
-                detail.files.add(file)
+                files.append(file)
 
-        return detail
+        return ProjectDetail(name=project, versions=sorted(versions), files=files)
