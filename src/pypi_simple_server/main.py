@@ -69,6 +69,7 @@ async def lifespan(app: Starlette):
     CACHE_DIR.mkdir(exist_ok=True)
     with database:
         database.update()
+        print(database.stats())
         yield
 
 

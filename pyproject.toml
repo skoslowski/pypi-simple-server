@@ -7,12 +7,11 @@ authors = [
   {name = "Sebastian Koslowski", email = "s.koslowski@procitec.de"},
 ]
 dependencies = [
-  "jinja2 >=3.1.5",
+  "jinja2>=3.1.5",
   "msgspec>=0.19.0",
-  "packaging",
-  "sortedcontainers>=2.4.0",
+  "packaging>=24.2",
   "starlette>=0.45.3",
-  "uvicorn[standard] >= 0.15.0",
+  "uvicorn[standard]>=0.15.0",
 ]
 description = 'Simple PEP503 index for python packages'
 version = "0.0.1"
@@ -30,7 +29,6 @@ lint.extend-select = [
   "PT", # flake8-pytest-style
 ]
 line-length = 110
-
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]

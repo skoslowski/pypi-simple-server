@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 from collections.abc import Iterator
-from contextlib import closing
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from tarfile import TarFile
@@ -81,7 +81,7 @@ class ProjectFileReader:
             for file in files:
                 yield index, root_dir / file
 
-    def read(self, file: Path, index: str) -> tuple[NormalizedName, str, ProjectFile]:
+    def read(self, file: Path) -> tuple[NormalizedName, str, ProjectFile]:
         metadata_content = read_project_metadata(file)
 
         try:
@@ -94,7 +94,7 @@ class ProjectFileReader:
         dist = ProjectFile(
             filename=file.name,
             size=file.stat().st_size,
-            url=f"{index}/{file.name}",
+            url=file.relative_to(self.files_dir).as_posix(),
             hashes=_get_file_hashes(file),
             requires_python=metadata.get("requires_python"),
             core_metadata={"sha256": hashlib.sha256(metadata_content).hexdigest()},
@@ -150,13 +150,20 @@ LOOKUP_INDEX_DETAIL = """
     SELECT version, file AS "file [ProjectFile]"
     FROM Distribution
     WHERE "project" = ? AND "index" = ?
+    GROUP BY filename
+    HAVING ROWID = MIN(ROWID)
     ORDER BY filename
 """
 
 CHECK_DIST = """
-    SELECT COUNT(ROWID)
+    SELECT COUNT(*)
     FROM Distribution
     WHERE "index" = ? AND "filename" = ?
+"""
+
+GET_STATS = """
+    SELECT COUNT(*), COUNT(DISTINCT project), COUNT(DISTINCT "index")
+    FROM Distribution
 """
 
 STORE_DIST = """
@@ -181,31 +188,33 @@ class Database:
             detect_types=sqlite3.PARSE_COLNAMES,
             autocommit=False,
         )
-        closing(self._connection.executescript(BUILD_TABLE))
+        self._connection.executescript(BUILD_TABLE).close()
         return self
 
-    def __exit__(self, type, value, tb):
+    def __exit__(self, *exc_info):
         self._connection.close()
+
+    def stats(self) -> tuple[int, int, int]:
+        with self._connection as cur:
+            return cur.execute(GET_STATS).fetchone()
 
     def update(self) -> None:
         project_file_reader = ProjectFileReader(self.files_dir, self.cache_dir)
 
         for index, file in project_file_reader.iter_files():
-            try:
-                name, version, dist = project_file_reader.read(file, index)
-            except UnhandledFileTypeError:
-                continue
-            except InvalidFileError as e:
-                logger.error(e)
-                continue
-
             with self._connection as cursor:
+                if cursor.execute(CHECK_DIST, (index, file.name)).fetchone()[0]:
+                    continue
+
                 try:
-                    cursor.execute(STORE_DIST, (index, name, file.name, version, dist))
-                except sqlite3.IntegrityError:
-                    cursor.rollback()
-                else:
-                    cursor.commit()
+                    name, version, dist = project_file_reader.read(file)
+                except UnhandledFileTypeError:
+                    continue
+                except InvalidFileError as e:
+                    logger.error(e)
+                    continue
+
+                cursor.execute(STORE_DIST, (index, name, file.name, version, dist))
 
     def get_project_list(self, index: str) -> ProjectList:
         with self._connection as con:
