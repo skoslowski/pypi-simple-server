@@ -66,7 +66,9 @@ async def ping(request: Request) -> PlainTextResponse:
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
+    CACHE_DIR.mkdir(exist_ok=True)
     with database:
+        database.update()
         yield
 
 
@@ -75,8 +77,8 @@ static_files.all_directories += [BASE_DIR, CACHE_DIR]
 
 routes = [
     Route("/simple/", endpoint=index),
-    Route("/{index:path}/simple/", endpoint=index),
     Route("/simple/{project}/", endpoint=detail),
+    Route("/{index:path}/simple/", endpoint=index),
     Route("/{index:path}/simple/{project}/", endpoint=detail),
     Route("/ping", endpoint=ping),
     Mount("/files", static_files, name="files"),

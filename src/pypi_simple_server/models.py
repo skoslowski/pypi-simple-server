@@ -4,14 +4,11 @@ Model for Simple Index data
 https://packaging.python.org/en/latest/specifications/simple-repository-api/
 """
 
-from collections.abc import Sequence
-from operator import attrgetter
 from typing import Annotated
 
 from msgspec import Meta as M
 from msgspec import Struct
 from packaging.utils import NormalizedName
-from sortedcontainers import SortedSet
 
 # https://peps.python.org/pep-0508/#names
 ProjectName = Annotated[str, M(pattern=r"^([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9])$")]
@@ -53,9 +50,9 @@ class ProjectDetail(Struct, kw_only=True):
     # PEP-691
     name: NormalizedProjectName
     # PEP-700
-    versions: Sequence[str] = list()
+    versions: list[str] = list()
     # PEP-503
-    files: Sequence[ProjectFile] = list()
+    files: list[ProjectFile] = list()
 
 
 class Project(Struct):
@@ -72,4 +69,4 @@ class ProjectList(Struct):
     # PEP-629
     meta: Meta = Meta()
     # PEP-503
-    projects: Sequence[Project] = list()
+    projects: list[Project] = list()

@@ -73,9 +73,13 @@ class ProjectFileReader:
     cache_dir: Path
 
     def iter_files(self) -> Iterator[tuple[str, Path]]:
-        for file in self.files_dir.rglob("*.*"):
-            index = file.relative_to(self.files_dir).parent.as_posix().removeprefix(".")
-            yield index, file
+        for root, _, files in os.walk(self.files_dir):
+            if root == self.cache_dir:
+                continue
+            root_dir = Path(root)
+            index = root_dir.relative_to(self.files_dir).as_posix()
+            for file in files:
+                yield index, root_dir / file
 
     def read(self, file: Path, index: str) -> tuple[NormalizedName, str, ProjectFile]:
         metadata_content = read_project_metadata(file)
@@ -114,8 +118,10 @@ BUILD_TABLE = """
         "project" TEXT NOT NULL,
         "filename" TEXT NOT NULL,
         "version" TEXT NOT NULL,
-        "file" BLOB NOT NULL
-    )
+        "file" ProjectFile NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS project_lookup ON Distribution(project, "index");
+    CREATE UNIQUE INDEX IF NOT EXISTS file_lookup ON Distribution("index", "file");
 """
 
 LOOKUP_ROOT_PROJECT = """
@@ -132,38 +138,54 @@ LOOKUP_INDEX_PROJECT = """
 """
 
 LOOKUP_ROOT_DETAIL = """
-    SELECT version, file
+    SELECT version, file AS "file [ProjectFile]"
     FROM Distribution
     WHERE "project" = ?
+    GROUP BY filename
+    HAVING ROWID = MIN(ROWID)
     ORDER BY filename
 """
 
 LOOKUP_INDEX_DETAIL = """
-    SELECT version, file
+    SELECT version, file AS "file [ProjectFile]"
     FROM Distribution
     WHERE "project" = ? AND "index" = ?
     ORDER BY filename
 """
 
-STORE_DIST = """
-    REPLACE INTO Distribution VALUES (?, ?, ?, ?, ?)
+CHECK_DIST = """
+    SELECT COUNT(ROWID)
+    FROM Distribution
+    WHERE "index" = ? AND "filename" = ?
 """
+
+STORE_DIST = """
+    INSERT INTO Distribution VALUES (?, ?, ?, ?, ?)
+"""
+
+sqlite3.register_adapter(ProjectFile, msgspec.json.Encoder().encode)
+sqlite3.register_converter("ProjectFile", msgspec.json.Decoder(ProjectFile).decode)
 
 
 @dataclass
 class Database:
     files_dir: Path
     cache_dir: Path
-    database_url: str = ":memory:"
+
+    def __post_init__(self) -> None:
+        self.database_file = self.cache_dir / "db.sqlite"
 
     def __enter__(self) -> Self:
-        self._con = sqlite3.connect(self.database_url)
-        closing(self._con.execute(BUILD_TABLE))
-        self.update()
+        self._connection = sqlite3.connect(
+            self.database_file,
+            detect_types=sqlite3.PARSE_COLNAMES,
+            autocommit=False,
+        )
+        closing(self._connection.executescript(BUILD_TABLE))
         return self
 
     def __exit__(self, type, value, tb):
-        self._con.close()
+        self._connection.close()
 
     def update(self) -> None:
         project_file_reader = ProjectFileReader(self.files_dir, self.cache_dir)
@@ -171,37 +193,37 @@ class Database:
         for index, file in project_file_reader.iter_files():
             try:
                 name, version, dist = project_file_reader.read(file, index)
-                data = msgspec.json.encode(dist)
-                with self._con as cur:
-                    cur.execute(STORE_DIST, (index, name, file.name, version, data))
-                    cur.commit()
-
             except UnhandledFileTypeError:
                 continue
             except InvalidFileError as e:
                 logger.error(e)
                 continue
 
+            with self._connection as cursor:
+                try:
+                    cursor.execute(STORE_DIST, (index, name, file.name, version, dist))
+                except sqlite3.IntegrityError:
+                    cursor.rollback()
+                else:
+                    cursor.commit()
+
     def get_project_list(self, index: str) -> ProjectList:
-        with self._con as con:
+        with self._connection as con:
             result = (
                 con.execute(LOOKUP_INDEX_PROJECT, (index,)) if index else con.execute(LOOKUP_ROOT_PROJECT)
             )
             return ProjectList(projects=[Project(name) for (name,) in result])
 
     def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
-        files = list()
-        versions = set()
-
-        with self._con as con:
+        detail = ProjectDetail(name=project)
+        with self._connection as con:
             result = (
                 con.execute(LOOKUP_INDEX_DETAIL, (project, index))
                 if index
                 else con.execute(LOOKUP_ROOT_DETAIL, (project,))
             )
-            for version, data in result:
-                versions.add(version)
-                file = msgspec.json.decode(data, type=ProjectFile)
-                files.append(file)
-
-        return ProjectDetail(name=project, versions=sorted(versions), files=files)
+            for version, dist in result:
+                detail.versions.append(version)
+                detail.files.append(dist)
+        detail.versions = sorted(set(detail.versions))
+        return detail
