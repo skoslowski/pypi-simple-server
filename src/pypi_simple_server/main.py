@@ -1,63 +1,53 @@
+from hashlib import md5
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from packaging.utils import canonicalize_name
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.status import HTTP_404_NOT_FOUND
-from starlette.templating import Jinja2Templates
 
 from .config import BASE_DIR, CACHE_DIR
 from .database import Database
-from .requests import MediaType, get_response_media_type
-from .responses import SimpleV1HTMLResponse, SimpleV1JSONResponse
+from .endpoint_utils import get_response, handle_etag
 
 logger = logging.getLogger(__name__)
-templates = Jinja2Templates(Path(__file__).with_name("templates"))
 database = Database(BASE_DIR, CACHE_DIR)
 
 
 async def index(request: Request) -> Response:
-    media_type = get_response_media_type(request)
+    headers = handle_etag(request, None)
     index: str = request.path_params.get("index", "")
 
-    project_list = database.get_project_list(index)
+    project_list = await run_in_threadpool(database.get_project_list, index)
     if not project_list.projects:
         raise HTTPException(HTTP_404_NOT_FOUND)
 
-    if media_type == MediaType.HTML_V1:
-        return SimpleV1HTMLResponse(request, "index.html", model=project_list)
-    return SimpleV1JSONResponse(project_list)
+    return get_response(request, headers, project_list, "index.html")
 
 
 async def detail(request: Request) -> Response:
-    media_type = get_response_media_type(request)
+    headers = handle_etag(request, None)
     index: str = request.path_params.get("index", "")
-    project: str = request.path_params.get("project", "")
+    project_raw: str = request.path_params.get("project", "")
 
-    project_canonical = canonicalize_name(project)
-    if project != project_canonical:
-        return RedirectResponse(
-            url=request.url.path.replace(project, project_canonical),
-            status_code=301,
-        )
+    project = canonicalize_name(project_raw)
+    if project_raw != project:
+        url = request.url.path.replace(project_raw, project)
+        return RedirectResponse(url, status_code=301)
 
-    project_details = database.get_project_detail(project_canonical, index)
+    project_details = await run_in_threadpool(database.get_project_detail, project, index)
     if not project_details.files:
         raise HTTPException(HTTP_404_NOT_FOUND)
     for project_file in project_details.files:
-        if project_file.url.startswith("http"):
-            continue
         project_file.url = str(request.url_for("files", path=project_file.url))
 
-    if media_type == MediaType.HTML_V1:
-        return SimpleV1HTMLResponse(request, name="detail.html", model=project_details)
-    return SimpleV1JSONResponse(project_details)
+    return get_response(request, headers, project_details, "detail.html")
 
 
 async def ping(request: Request) -> PlainTextResponse:
@@ -69,8 +59,7 @@ async def lifespan(app: Starlette):
     CACHE_DIR.mkdir(exist_ok=True)
     with database:
         database.update()
-        print(database.stats())
-        yield
+        yield {"etag": md5(str(database.stats()).encode())}
 
 
 static_files = StaticFiles()
