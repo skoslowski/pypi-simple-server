@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 BUILD_TABLE = """
     CREATE TABLE IF NOT EXISTS Distribution (
         "index" TEXT NOT NULL,
-        "project" TEXT NOT NULL,
         "filename" TEXT NOT NULL,
+        "project" TEXT NOT NULL,
         "version" TEXT NOT NULL,
-        "file" ProjectFile NOT NULL
+        "file" ProjectFile NOT NULL,
+        "metadata" BLOB NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS project_lookup ON Distribution(project, "index");
-    CREATE UNIQUE INDEX IF NOT EXISTS file_lookup ON Distribution("index", "file");
+    CREATE INDEX IF NOT EXISTS project_lookup ON Distribution("project", "index");
+    CREATE UNIQUE INDEX IF NOT EXISTS file_lookup ON Distribution("filename", "index");
 """
 
 GET_STATS = """
@@ -33,26 +34,32 @@ LOOKUP_PROJECT_LIST = """
     SELECT DISTINCT "project"
     FROM Distribution
     WHERE "index" GLOB ?
-    ORDER BY project
+    ORDER BY "project"
 """
 
 LOOKUP_PROJECT_DETAIL = """
-    SELECT version, file AS "file [ProjectFile]"
+    SELECT "version", "file" AS "file [ProjectFile]"
     FROM Distribution
     WHERE "project" = ? AND "index" GLOB ?
-    GROUP BY filename
+    GROUP BY "filename"
     HAVING ROWID = MIN(ROWID)
-    ORDER BY filename
+    ORDER BY "filename"
+"""
+
+LOOKUP_METADATA = """
+    SELECT "metadata"
+    FROM Distribution
+    WHERE "filename" = ? AND "index" GLOB ?
 """
 
 CHECK_DIST = """
     SELECT COUNT(*)
     FROM Distribution
-    WHERE "index" = ? AND "filename" = ?
+    WHERE "filename" = ? AND "index" = ?
 """
 
 STORE_DIST = """
-    INSERT INTO Distribution VALUES (?, ?, ?, ?, ?)
+    INSERT INTO Distribution VALUES (?, ?, ?, ?, ?, ?)
 """
 
 sqlite3.register_adapter(ProjectFile, msgspec.msgpack.Encoder().encode)
@@ -74,13 +81,10 @@ class Stats(msgspec.Struct, frozen=True):
 @dataclass
 class Database:
     files_dir: Path
-    cache_dir: Path
-
-    @property
-    def database_file(self) -> Path:
-        return self.cache_dir / "db.sqlite"
+    database_file: Path
 
     def __enter__(self) -> Self:
+        self.database_file.parent.mkdir(exist_ok=True, parents=True)
         self._connection = sqlite3.connect(
             self.database_file,
             detect_types=sqlite3.PARSE_COLNAMES,
@@ -98,35 +102,42 @@ class Database:
             return Stats(*cur.execute(GET_STATS).fetchone())
 
     def update(self) -> None:
-        project_file_reader = ProjectFileReader(self.files_dir, self.cache_dir)
+        project_file_reader = ProjectFileReader(self.files_dir)
 
         for index, file in project_file_reader.iter_files():
             with self._connection as cursor:
-                if cursor.execute(CHECK_DIST, (index, file.name)).fetchone()[0]:
+                if cursor.execute(CHECK_DIST, (file.name, index)).fetchone()[0]:
                     continue
                 try:
-                    name, version, dist = project_file_reader.read(file)
+                    project, version, dist, metadata = project_file_reader.read(file)
                 except UnhandledFileTypeError:
                     continue
                 except InvalidFileError as e:
                     logger.error(e)
                     continue
 
-                cursor.execute(STORE_DIST, (index, name, file.name, version, dist))
+                cursor.execute(STORE_DIST, (index, file.name, project, version, dist, metadata))
 
     def get_project_list(self, index: str) -> ProjectList:
         with self._connection as con:
-            search_index = f"{index}/*" if index else "*"
-            result = con.execute(LOOKUP_PROJECT_LIST, (search_index,))
+            result = con.execute(LOOKUP_PROJECT_LIST, (_path_pattern(index),))
             return ProjectList(projects=[Project(name) for (name,) in result])
 
     def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
         detail = ProjectDetail(name=project)
-        with self._connection as con:
-            search_index = f"{index}/*" if index else "*"
-            result = con.execute(LOOKUP_PROJECT_DETAIL, (project, search_index))
+        with self._connection as cursor:
+            result = cursor.execute(LOOKUP_PROJECT_DETAIL, (project, _path_pattern(index)))
             for version, dist in result:
                 detail.versions.append(version)
                 detail.files.append(dist)
         detail.versions = sorted(set(detail.versions))
         return detail
+
+    def get_metadata(self, filename: str, index: str) -> bytes:
+        with self._connection as cursor:
+            result = cursor.execute(LOOKUP_METADATA, (filename, _path_pattern(index))).fetchone()
+        return result[0]
+
+
+def _path_pattern(prefix: str) -> str:
+    return f"{prefix}/*" if prefix else "*"

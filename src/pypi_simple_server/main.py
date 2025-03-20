@@ -11,12 +11,12 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.status import HTTP_404_NOT_FOUND
 
-from .config import BASE_DIR, CACHE_DIR
+from .config import BASE_DIR, CACHE_FILE
 from .database import Database
 from .endpoint_utils import ETagProvider, get_response, handle_etag
 
 logger = logging.getLogger(__name__)
-database = Database(BASE_DIR, CACHE_DIR)
+database = Database(BASE_DIR, CACHE_FILE)
 
 
 async def index(request: Request) -> Response:
@@ -33,7 +33,7 @@ async def index(request: Request) -> Response:
 async def detail(request: Request) -> Response:
     headers = handle_etag(request, None)
     index: str = request.path_params.get("index", "")
-    project_raw: str = request.path_params.get("project", "")
+    project_raw: str = request.path_params["project"]
 
     project = canonicalize_name(project_raw)
     if project_raw != project:
@@ -49,20 +49,29 @@ async def detail(request: Request) -> Response:
     return get_response(request, headers, project_details, "detail.html")
 
 
+async def metadata(request: Request) -> Response:
+    headers = {
+        **handle_etag(request, None),
+        "Cache-Control": "max-age=600, public",
+    }
+    index: str = request.path_params.get("index", "")
+    filename: str = request.path_params["filename"]  # w/o suffix .metadata
+
+    metadata_content = await run_in_threadpool(database.get_metadata, filename, index)
+    return Response(metadata_content, headers=headers, media_type="binary/octet-stream")
+
+
 async def ping(request: Request) -> PlainTextResponse:
     return PlainTextResponse("")
 
-
 @asynccontextmanager
 async def lifespan(app: Starlette):
-    CACHE_DIR.mkdir(exist_ok=True)
     with database:
         database.update()
-        yield {"etag": ETagProvider(database.database_file)}
+        yield {"etag": ETagProvider(CACHE_FILE)}
 
 
-static_files = StaticFiles()
-static_files.all_directories += [BASE_DIR, CACHE_DIR]
+static_files = StaticFiles(directory=BASE_DIR)
 
 routes = [
     Route("/simple/", endpoint=index),
@@ -70,6 +79,7 @@ routes = [
     Route("/{index:path}/simple/", endpoint=index),
     Route("/{index:path}/simple/{project}/", endpoint=detail),
     Route("/ping", endpoint=ping),
+    Route("/files/{filename:path}.metadata", endpoint=metadata),
     Mount("/files", static_files, name="files"),
 ]
 

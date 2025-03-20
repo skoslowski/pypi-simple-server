@@ -66,18 +66,15 @@ def _get_file_hashes(filename: Path, blocksize: int = 2 << 13) -> dict[str, str]
 @dataclass
 class ProjectFileReader:
     files_dir: Path
-    cache_dir: Path
 
     def iter_files(self) -> Iterator[tuple[str, Path]]:
         for root, _, files in os.walk(self.files_dir):
             root_dir = Path(root)
-            if root_dir == self.cache_dir:
-                continue
             index = f"{root_dir.relative_to(self.files_dir).as_posix()}/".lstrip(".")
             for file in files:
                 yield index, root_dir / file
 
-    def read(self, file: Path) -> tuple[NormalizedName, str, ProjectFile]:
+    def read(self, file: Path) -> tuple[NormalizedName, str, ProjectFile, bytes]:
         try:
             metadata_content = read_project_metadata(file)
             metadata, _ = parse_email(metadata_content)
@@ -96,14 +93,4 @@ class ProjectFileReader:
             requires_python=metadata.get("requires_python"),
             core_metadata={"sha256": hashlib.sha256(metadata_content).hexdigest()},
         )
-
-        self.save_metadata(file, metadata_content)
-        return name, version, dist
-
-    def save_metadata(self, file: Path, metadata_content: bytes) -> None:
-        metadata_file = self.cache_dir.joinpath(file.relative_to(self.files_dir))
-        metadata_file = metadata_file.with_name(file.name + ".metadata")
-        metadata_file.parent.mkdir(parents=True, exist_ok=True)
-        metadata_file.write_bytes(metadata_content)
-        file_stat = file.stat()
-        os.utime(metadata_file, (file_stat.st_atime, file_stat.st_mtime))
+        return name, version, dist, metadata_content

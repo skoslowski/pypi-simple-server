@@ -1,5 +1,5 @@
 .venv
 dist
 tests/files
-tests/cache
+tests/*.sqlite
 .coverage

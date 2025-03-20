@@ -9,4 +9,4 @@ config = Config(
 )
 
 BASE_DIR = config("BASE_DIR", cast=Path, default=Path.cwd())
-CACHE_DIR = config("CACHE_DIR", cast=Path, default=BASE_DIR / ".cache")
+CACHE_FILE = config("CACHE_FILE", cast=Path, default=BASE_DIR / ".cache.sqlite")

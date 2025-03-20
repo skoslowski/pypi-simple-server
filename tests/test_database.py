@@ -11,9 +11,8 @@ from pypi_simple_server.database import Database
 @pytest.fixture
 def database(file_path: Path, tmp_path: Path) -> Iterator[Database]:
     shutil.copytree(file_path, tmp_path, dirs_exist_ok=True)
-    tmp_cache_path = tmp_path / ".cache"
-    tmp_cache_path.mkdir()
-    with Database(tmp_path, tmp_cache_path) as db:
+    db_file = tmp_path / ".cache.sqlite"
+    with Database(tmp_path, db_file) as db:
         assert db.stats().distributions == 0
         yield db
 
@@ -28,7 +27,7 @@ def rename_files(files: list[Path]) -> Iterator[None]:
         backup.rename(file)
 
 
-def test_new_index(database: Database, tmp_path: Path):
+def test_new_index(database: Database):
     rename = list(database.files_dir.rglob("ext/*"))
     with rename_files(rename):
         database.update()

@@ -24,7 +24,7 @@ FILES_REQUIRED = [
 @pytest.fixture(scope="session")
 def file_path() -> Path:
     download_dir = Path(__file__).with_name("files")
-    files_missing = {}
+    files_missing: dict[str, list[Path]] = {}
     for entry in FILES_REQUIRED:
         file = download_dir / entry
         if file.exists():
@@ -54,7 +54,7 @@ def download(files_missing: dict[str, list[Path]]) -> None:
 def client(file_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
     from pypi_simple_server import config
 
-    patch_config = mock.patch.object(config, "CACHE_DIR", tmp_path_factory.mktemp("cache"))
+    patch_config = mock.patch.object(config, "CACHE_FILE", tmp_path_factory.mktemp("cache") / "db.sqlite")
 
     from pypi_simple_server.main import app
 
