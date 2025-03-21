@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import replace
 
 from packaging.utils import canonicalize_name
 from starlette.applications import Starlette
@@ -64,10 +65,13 @@ async def metadata(request: Request) -> Response:
 async def ping(request: Request) -> PlainTextResponse:
     return PlainTextResponse("")
 
+
 @asynccontextmanager
 async def lifespan(app: Starlette):
+    CACHE_FILE.parent.mkdir(exist_ok=True, parents=True)
+    with replace(database, read_only=False) as db:
+        db.update()
     with database:
-        database.update()
         yield {"etag": ETagProvider(CACHE_FILE)}
 
 

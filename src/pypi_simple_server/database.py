@@ -82,16 +82,19 @@ class Stats(msgspec.Struct, frozen=True):
 class Database:
     files_dir: Path
     database_file: Path
+    read_only: bool = True
 
     def __enter__(self) -> Self:
-        self.database_file.parent.mkdir(exist_ok=True, parents=True)
+        mode = "?mode=ro" if self.read_only else ""
         self._connection = sqlite3.connect(
-            self.database_file,
+            f"file://{self.database_file}{mode}",
+            uri=True,
             detect_types=sqlite3.PARSE_COLNAMES,
             autocommit=False,
             check_same_thread=False,
         )
-        self._connection.executescript(BUILD_TABLE).close()
+        if not self.read_only:
+            self._connection.executescript(BUILD_TABLE).close()
         return self
 
     def __exit__(self, *exc_info):

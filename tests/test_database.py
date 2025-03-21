@@ -12,7 +12,7 @@ from pypi_simple_server.database import Database
 def database(file_path: Path, tmp_path: Path) -> Iterator[Database]:
     shutil.copytree(file_path, tmp_path, dirs_exist_ok=True)
     db_file = tmp_path / ".cache.sqlite"
-    with Database(tmp_path, db_file) as db:
+    with Database(tmp_path, db_file, read_only=False) as db:
         assert db.stats().distributions == 0
         yield db
 
