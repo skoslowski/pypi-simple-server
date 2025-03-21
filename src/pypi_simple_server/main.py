@@ -2,9 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import replace
 
+from anyio import CapacityLimiter, to_thread
 from packaging.utils import canonicalize_name
 from starlette.applications import Starlette
-from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
@@ -18,13 +18,14 @@ from .endpoint_utils import ETagProvider, get_response, handle_etag
 
 logger = logging.getLogger(__name__)
 database = Database(BASE_DIR, CACHE_FILE)
+limiter = CapacityLimiter(1)
 
 
 async def index(request: Request) -> Response:
     headers = handle_etag(request, None)
     index: str = request.path_params.get("index", "")
 
-    project_list = await run_in_threadpool(database.get_project_list, index)
+    project_list = await to_thread.run_sync(database.get_project_list, index, limiter=limiter)
     if not project_list.projects:
         raise HTTPException(HTTP_404_NOT_FOUND)
 
@@ -41,7 +42,9 @@ async def detail(request: Request) -> Response:
         url = request.url.path.replace(project_raw, project)
         return RedirectResponse(url, status_code=301)
 
-    project_details = await run_in_threadpool(database.get_project_detail, project, index)
+    project_details = await to_thread.run_sync(
+        database.get_project_detail, project, index, limiter=limiter
+    )
     if not project_details.files:
         raise HTTPException(HTTP_404_NOT_FOUND)
     for project_file in project_details.files:
@@ -58,7 +61,9 @@ async def metadata(request: Request) -> Response:
     index: str = request.path_params.get("index", "")
     filename: str = request.path_params["filename"]  # w/o suffix .metadata
 
-    metadata_content = await run_in_threadpool(database.get_metadata, filename, index)
+    metadata_content = await to_thread.run_sync(
+        database.get_metadata, filename, index, limiter=limiter
+    )
     return Response(metadata_content, headers=headers, media_type="binary/octet-stream")
 
 
