@@ -1,23 +1,30 @@
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from datetime import UTC, datetime
 
+import msgspec
 from packaging.utils import canonicalize_name
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.status import HTTP_404_NOT_FOUND
 
 from .config import BASE_DIR, CACHE_FILE
 from .database import Database
-from .dist_scanner import ProjectFileReader
+from .dist_scanner import FileWatcher, ProjectFileReader
 from .endpoint_utils import ETagProvider, get_response, handle_etag
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=logging.getLogger("uvicorn").handlers or None,
+)
 
 
 async def index(request: Request) -> Response:
@@ -68,23 +75,40 @@ async def ping(request: Request) -> PlainTextResponse:
     return PlainTextResponse("")
 
 
+def status(request: Request) -> JSONResponse:
+    last_changed = datetime.fromtimestamp(request.state.etag.last_changed, UTC)
+    result = {
+        "global": msgspec.to_builtins(database.stats()),
+        "indexes": database.stats_per_index(),
+        "last_update": last_changed.replace(microsecond=0).astimezone().isoformat(),
+    }
+    return JSONResponse(result)
+
+
 @asynccontextmanager
 async def lifespan(app: Starlette):
     CACHE_FILE.parent.mkdir(exist_ok=True, parents=True)
-    with replace(database, read_only=False) as db:
-        db.update(ProjectFileReader(BASE_DIR))
+    _update_database()
+    _ = FileWatcher(BASE_DIR, _update_database)
     with database:
         yield {"etag": ETagProvider(CACHE_FILE)}
+
+
+def _update_database() -> None:
+    logger.info("Updating database")
+    with replace(database, read_only=False) as db:
+        db.update(ProjectFileReader(BASE_DIR))
 
 
 static_files = StaticFiles(directory=BASE_DIR)
 
 routes = [
+    Route("/", endpoint=status),
+    Route("/ping", endpoint=ping),
     Route("/simple/", endpoint=index),
     Route("/simple/{project}/", endpoint=detail),
     Route("/{index:path}/simple/", endpoint=index),
     Route("/{index:path}/simple/{project}/", endpoint=detail),
-    Route("/ping", endpoint=ping),
     Route("/files/{filename:path}.metadata", endpoint=metadata),
     Mount("/files", static_files, name="files"),
 ]

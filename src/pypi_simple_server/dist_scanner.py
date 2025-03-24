@@ -1,12 +1,15 @@
+import asyncio
 import hashlib
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from tarfile import TarFile
+from time import time
 from zipfile import ZipFile
 
+import watchfiles
 from packaging.metadata import parse_email
 from packaging.utils import (
     NormalizedName,
@@ -94,3 +97,31 @@ class ProjectFileReader:
             core_metadata={"sha256": hashlib.sha256(metadata_content).hexdigest()},
         )
         return name, version, dist, metadata_content
+
+
+@dataclass
+class FileWatcher:
+    watch_dir: Path
+    callback: Callable[[], None]
+    quiet_time: int = 10
+
+    def __post_init__(self) -> None:
+        self._last_change: float | None = None
+        self._watch_task = asyncio.create_task(self._run_watch())
+        self._callback_task = asyncio.create_task(self._run_callback())
+
+    async def _run_watch(self) -> None:
+        async for _ in watchfiles.awatch(self.watch_dir.absolute()):
+            if not self._last_change:
+                logger.info("File watch detected changes")
+            self._last_change = time()
+
+    async def _run_callback(self) -> None:
+        while True:
+            if self._last_change and time() < self._last_change + self.quiet_time:
+                self._last_run = None
+                try:
+                    self.callback()
+                except Exception as e:
+                    logger.exception("File watch callback failed: %s", e)
+            await asyncio.sleep(10)

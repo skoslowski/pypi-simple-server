@@ -34,14 +34,20 @@ GET_STATS = """
     FROM Distribution
 """
 
-LOOKUP_PROJECT_LIST = """
+GET_STATS_PER_INDEX = """
+    SELECT "index", COUNT(*) as distributions, COUNT(DISTINCT project) as projects
+    FROM Distribution
+    GROUP BY "index"
+"""
+
+GET_PROJECT_LIST = """
     SELECT DISTINCT "project"
     FROM Distribution
     WHERE "index" GLOB ?
     ORDER BY "project"
 """
 
-LOOKUP_PROJECT_DETAIL = """
+GET_PROJECT_DETAIL = """
     SELECT "version", "file" AS "file [ProjectFile]"
     FROM Distribution
     WHERE "project" = ? AND "index" GLOB ?
@@ -50,7 +56,7 @@ LOOKUP_PROJECT_DETAIL = """
     ORDER BY "filename"
 """
 
-LOOKUP_METADATA = """
+GET_METADATA = """
     SELECT "metadata"
     FROM Distribution
     WHERE "filename" = ? AND "index" GLOB ?
@@ -62,8 +68,18 @@ CHECK_DIST = """
     WHERE "filename" = ? AND "index" = ?
 """
 
+LIST_DISTS = """
+    SELECT "filename", "index"
+    FROM Distribution
+"""
+
 STORE_DIST = """
     INSERT INTO Distribution VALUES (?, ?, ?, ?, ?, ?)
+"""
+
+REMOVE_DIST = """
+    DELETE FROM Distribution
+    WHERE "filename" = ? AND "index" = ?
 """
 
 sqlite3.register_adapter(ProjectFile, msgspec.msgpack.Encoder().encode)
@@ -74,12 +90,6 @@ class Stats(msgspec.Struct, frozen=True):
     distributions: int
     projects: int
     indexes: int
-
-    def __getitem__(self, index: int | slice) -> int | tuple[int, ...]:
-        return msgspec.structs.astuple(self)[index]
-
-    # def __len__(self) -> int:
-    #     return len(msgspec.structs.fields(self))
 
 
 @dataclass
@@ -134,6 +144,12 @@ class Database:
         with self._get_connection() as con:
             return Stats(*con.execute(GET_STATS).fetchone())
 
+    def stats_per_index(self):
+        with self._get_connection() as con:
+            cursor = con.execute(GET_STATS_PER_INDEX)
+            fields = [column[0] for column in cursor.description]
+            return [{key: value for key, value in zip(fields, row)} for row in cursor]
+
     def update(self, project_file_reader: ProjectFileReader) -> None:
         with self._get_connection() as con:
             for index, file in project_file_reader:
@@ -143,27 +159,36 @@ class Database:
                     project, version, dist, metadata = project_file_reader.read(file)
                 except UnhandledFileTypeError:
                     continue
-                except InvalidFileError as e:
-                    logger.error(e)
+                except InvalidFileError:
+                    logger.warning("Ignoring invalid distribution %s", file)
                     continue
 
+                logger.info("Adding %s", file)
                 con.execute(STORE_DIST, (index, file.name, project, version, dist, metadata))
 
-    async def get_project_list(self, index: str) -> ProjectList:
+            to_remove = set()
+            for filename, index in con.execute(LIST_DISTS):
+                file_path = project_file_reader.files_dir.joinpath(index.rstrip("/"), filename)
+                if not file_path.exists():
+                    logger.info("Removing %s", file_path)
+                    to_remove.add((filename, index))
+            con.executemany(REMOVE_DIST, to_remove)
 
+        self.filepath.touch(exist_ok=True)
+
+    async def get_project_list(self, index: str) -> ProjectList:
         def run() -> ProjectList:
             with self._get_connection() as con:
-                cursor = con.execute(LOOKUP_PROJECT_LIST, (_path_pattern(index),))
+                cursor = con.execute(GET_PROJECT_LIST, (_path_pattern(index),))
                 return ProjectList(projects=[Project(name) for (name,) in cursor])
 
         return await to_thread.run_sync(run, limiter=self._limiter)
 
     async def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
-
         def run() -> ProjectDetail:
             detail = ProjectDetail(name=project)
             with self._get_connection() as con:
-                cursor = con.execute(LOOKUP_PROJECT_DETAIL, (project, _path_pattern(index)))
+                cursor = con.execute(GET_PROJECT_DETAIL, (project, _path_pattern(index)))
                 for version, dist in cursor:
                     detail.versions.append(version)
                     detail.files.append(dist)
@@ -175,7 +200,7 @@ class Database:
     async def get_metadata(self, filename: str, index: str) -> bytes | None:
         def run() -> bytes | None:
             with self._get_connection() as con:
-                result = con.execute(LOOKUP_METADATA, (filename, _path_pattern(index))).fetchone()
+                result = con.execute(GET_METADATA, (filename, _path_pattern(index))).fetchone()
             return result[0] if result else None
 
         return await to_thread.run_sync(run, limiter=self._limiter)

@@ -51,22 +51,24 @@ def get_response_media_type(request: Request) -> MediaType:
 class ETagProvider:
     def __init__(self, file: Path) -> None:
         self.file = file
-        self.value = ""
+        self.last_changed = 0.0
         self.interval = 1  # second
+        self._check_file()
         asyncio.create_task(self.updater())
 
     async def updater(self) -> None:
         while True:
             await asyncio.sleep(self.interval)
-            try:
-                mtime = self.file.stat().st_mtime
-            except FileNotFoundError:
-                self.value = ""
-            else:
-                self.value = md5(str(mtime).encode()).hexdigest()
+            self._check_file()
+
+    def _check_file(self) -> None:
+        try:
+            self.last_changed = self.file.stat().st_mtime
+        except FileNotFoundError:
+            pass
 
     def __str__(self) -> str:
-        return self.value
+        return md5(str(self.last_changed).encode()).hexdigest()
 
 
 def handle_etag(request: Request, etag: str | None, weak: bool = True) -> dict[str, str]:

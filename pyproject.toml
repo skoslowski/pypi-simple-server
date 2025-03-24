@@ -12,6 +12,7 @@ dependencies = [
   "packaging>=24.2",
   "starlette>=0.45.3",
   "uvicorn[standard]>=0.15.0",
+  "watchfiles>=1.0.4",
 ]
 description = 'Simple PEP503 index for python packages'
 version = "0.0.1"

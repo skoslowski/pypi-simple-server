@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from pypi_simple_server.database import Database
+from pypi_simple_server.database import Database, Stats
 from pypi_simple_server.dist_scanner import ProjectFileReader
 
 
@@ -23,6 +23,9 @@ def database(project_file_reader: ProjectFileReader) -> Iterator[Database]:
         yield db
 
 
+DEFAULT_STATS = Stats(11, 4, 2)
+
+
 @contextmanager
 def rename_files(files: list[Path]) -> Iterator[None]:
     renamed = [file.with_name(file.name + "~") for file in files]
@@ -37,10 +40,10 @@ def test_new_index(project_file_reader: ProjectFileReader, database: Database):
     rename = list(project_file_reader.files_dir.rglob("ext/*"))
     with rename_files(rename):
         database.update(project_file_reader)
-        assert database.stats()[:] == (7, 3, 1)
+        assert database.stats() == Stats(7, 3, 1)
 
     database.update(project_file_reader)
-    assert database.stats()[:] == (11, 4, 2)
+    assert database.stats() == DEFAULT_STATS
 
 
 def test_new_project(project_file_reader: ProjectFileReader, database: Database):
@@ -49,7 +52,23 @@ def test_new_project(project_file_reader: ProjectFileReader, database: Database)
 
     with rename_files(add_on_2nd_update):
         database.update(project_file_reader)
-        assert database.stats()[:] == (8, 3, 2)
+        assert database.stats() == Stats(8, 3, 2)
 
     database.update(project_file_reader)
-    assert database.stats()[:] == (11, 4, 2)
+    print(database.stats_per_index())
+    assert database.stats() == DEFAULT_STATS
+
+
+def test_removed_project(project_file_reader: ProjectFileReader, database: Database):
+    to_remove = list(project_file_reader.files_dir.rglob("iniconfig*"))
+    assert len(to_remove) == 3
+
+    database.update(project_file_reader)
+    assert database.stats() == DEFAULT_STATS
+
+    for file in to_remove:
+        file.unlink()
+
+    database.update(project_file_reader)
+    print(database.stats_per_index())
+    assert database.stats() == Stats(8, 3, 2)

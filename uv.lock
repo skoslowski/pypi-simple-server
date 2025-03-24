@@ -408,6 +408,7 @@ dependencies = [
     { name = "packaging" },
     { name = "starlette" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "watchfiles" },
 ]
 
 [package.dev-dependencies]
@@ -426,6 +427,7 @@ requires-dist = [
     { name = "packaging", specifier = ">=24.2" },
     { name = "starlette", specifier = ">=0.45.3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.15.0" },
+    { name = "watchfiles", specifier = ">=1.0.4" },
 ]
 
 [package.metadata.requires-dev]
