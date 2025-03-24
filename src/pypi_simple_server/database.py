@@ -80,15 +80,13 @@ class Stats(msgspec.Struct, frozen=True):
 
 @dataclass
 class Database:
-    files_dir: Path
-    database_file: Path
+    filepath: Path
     read_only: bool = True
 
     def __enter__(self) -> Self:
-        file = self.database_file.absolute()
         mode = "?mode=ro" if self.read_only else ""
         self._connection = sqlite3.connect(
-            f"file://{file}{mode}",
+            f"file://{self.filepath.absolute()}{mode}",
             uri=True,
             detect_types=sqlite3.PARSE_COLNAMES,
             autocommit=False,
@@ -105,10 +103,8 @@ class Database:
         with self._connection as cur:
             return Stats(*cur.execute(GET_STATS).fetchone())
 
-    def update(self) -> None:
-        project_file_reader = ProjectFileReader(self.files_dir)
-
-        for index, file in project_file_reader.iter_files():
+    def update(self, project_file_reader: ProjectFileReader) -> None:
+        for index, file in project_file_reader:
             with self._connection as cursor:
                 if cursor.execute(CHECK_DIST, (file.name, index)).fetchone()[0]:
                     continue

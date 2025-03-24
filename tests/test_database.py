@@ -6,13 +6,19 @@ from pathlib import Path
 import pytest
 
 from pypi_simple_server.database import Database
+from pypi_simple_server.dist_scanner import ProjectFileReader
 
 
 @pytest.fixture
-def database(file_path: Path, tmp_path: Path) -> Iterator[Database]:
+def project_file_reader(file_path: Path, tmp_path: Path) -> ProjectFileReader:
     shutil.copytree(file_path, tmp_path, dirs_exist_ok=True)
-    db_file = tmp_path / ".cache.sqlite"
-    with Database(tmp_path, db_file, read_only=False) as db:
+    return ProjectFileReader(tmp_path)
+
+
+@pytest.fixture
+def database(project_file_reader: ProjectFileReader) -> Iterator[Database]:
+    db_file = project_file_reader.files_dir / ".cache.sqlite"
+    with Database(db_file, read_only=False) as db:
         assert db.stats().distributions == 0
         yield db
 
@@ -27,23 +33,23 @@ def rename_files(files: list[Path]) -> Iterator[None]:
         backup.rename(file)
 
 
-def test_new_index(database: Database):
-    rename = list(database.files_dir.rglob("ext/*"))
+def test_new_index(project_file_reader: ProjectFileReader, database: Database):
+    rename = list(project_file_reader.files_dir.rglob("ext/*"))
     with rename_files(rename):
-        database.update()
+        database.update(project_file_reader)
         assert database.stats()[:] == (7, 3, 1)
 
-    database.update()
+    database.update(project_file_reader)
     assert database.stats()[:] == (11, 4, 2)
 
 
-def test_new_project(database: Database):
-    add_on_2nd_update = list(database.files_dir.rglob("iniconfig*"))
+def test_new_project(project_file_reader: ProjectFileReader, database: Database):
+    add_on_2nd_update = list(project_file_reader.files_dir.rglob("iniconfig*"))
     assert len(add_on_2nd_update) == 3
 
     with rename_files(add_on_2nd_update):
-        database.update()
+        database.update(project_file_reader)
         assert database.stats()[:] == (8, 3, 2)
 
-    database.update()
+    database.update(project_file_reader)
     assert database.stats()[:] == (11, 4, 2)

@@ -67,7 +67,7 @@ def _get_file_hashes(filename: Path, blocksize: int = 2 << 13) -> dict[str, str]
 class ProjectFileReader:
     files_dir: Path
 
-    def iter_files(self) -> Iterator[tuple[str, Path]]:
+    def __iter__(self) -> Iterator[tuple[str, Path]]:
         for root, _, files in os.walk(self.files_dir):
             root_dir = Path(root)
             index = f"{root_dir.relative_to(self.files_dir).as_posix()}/".lstrip(".")

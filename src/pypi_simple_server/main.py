@@ -14,10 +14,11 @@ from starlette.status import HTTP_404_NOT_FOUND
 
 from .config import BASE_DIR, CACHE_FILE
 from .database import Database
+from .dist_scanner import ProjectFileReader
 from .endpoint_utils import ETagProvider, get_response, handle_etag
 
 logger = logging.getLogger(__name__)
-database = Database(BASE_DIR, CACHE_FILE)
+database = Database(CACHE_FILE)
 limiter = CapacityLimiter(1)
 
 
@@ -77,7 +78,7 @@ async def ping(request: Request) -> PlainTextResponse:
 async def lifespan(app: Starlette):
     CACHE_FILE.parent.mkdir(exist_ok=True, parents=True)
     with replace(database, read_only=False) as db:
-        db.update()
+        db.update(ProjectFileReader(BASE_DIR))
     with database:
         yield {"etag": ETagProvider(CACHE_FILE)}
 
