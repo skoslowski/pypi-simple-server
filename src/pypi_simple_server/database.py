@@ -1,10 +1,14 @@
 import logging
+import queue
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
 import msgspec
+from anyio import CapacityLimiter, to_thread
 from packaging.utils import NormalizedName
 
 from .dist_scanner import InvalidFileError, ProjectFileReader, UnhandledFileTypeError
@@ -82,10 +86,26 @@ class Stats(msgspec.Struct, frozen=True):
 class Database:
     filepath: Path
     read_only: bool = True
+    max_num_connections: int = 4
+
+    def __post_init__(self):
+        self._connections = queue.Queue[sqlite3.Connection]()
+        self._limiter = CapacityLimiter(self.max_num_connections)
 
     def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc_info):
+        self._connections.shutdown()
+        try:
+            while con := self._connections.get():
+                con.close()
+        except queue.ShutDown:
+            pass  # queue empty
+
+    def _create_connection(self) -> sqlite3.Connection:
         mode = "?mode=ro" if self.read_only else ""
-        self._connection = sqlite3.connect(
+        con = sqlite3.connect(
             f"file://{self.filepath.absolute()}{mode}",
             uri=True,
             detect_types=sqlite3.PARSE_COLNAMES,
@@ -93,20 +113,31 @@ class Database:
             check_same_thread=False,
         )
         if not self.read_only:
-            self._connection.executescript(BUILD_TABLE).close()
-        return self
+            con.executescript(BUILD_TABLE).close()
+        return con
 
-    def __exit__(self, *exc_info):
-        self._connection.close()
+    @contextmanager
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        con = None
+        try:
+            try:
+                con = self._connections.get_nowait()
+            except queue.Empty:
+                con = self._create_connection()
+            with con:
+                yield con
+        finally:
+            if con is not None:
+                self._connections.put(con)
 
     def stats(self) -> Stats:
-        with self._connection as cur:
-            return Stats(*cur.execute(GET_STATS).fetchone())
+        with self._get_connection() as con:
+            return Stats(*con.execute(GET_STATS).fetchone())
 
     def update(self, project_file_reader: ProjectFileReader) -> None:
-        for index, file in project_file_reader:
-            with self._connection as cursor:
-                if cursor.execute(CHECK_DIST, (file.name, index)).fetchone()[0]:
+        with self._get_connection() as con:
+            for index, file in project_file_reader:
+                if con.execute(CHECK_DIST, (file.name, index)).fetchone()[0]:
                     continue
                 try:
                     project, version, dist, metadata = project_file_reader.read(file)
@@ -116,27 +147,38 @@ class Database:
                     logger.error(e)
                     continue
 
-                cursor.execute(STORE_DIST, (index, file.name, project, version, dist, metadata))
+                con.execute(STORE_DIST, (index, file.name, project, version, dist, metadata))
 
-    def get_project_list(self, index: str) -> ProjectList:
-        with self._connection as con:
-            result = con.execute(LOOKUP_PROJECT_LIST, (_path_pattern(index),))
-            return ProjectList(projects=[Project(name) for (name,) in result])
+    async def get_project_list(self, index: str) -> ProjectList:
 
-    def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
-        detail = ProjectDetail(name=project)
-        with self._connection as cursor:
-            result = cursor.execute(LOOKUP_PROJECT_DETAIL, (project, _path_pattern(index)))
-            for version, dist in result:
-                detail.versions.append(version)
-                detail.files.append(dist)
-        detail.versions = sorted(set(detail.versions))
-        return detail
+        def run() -> ProjectList:
+            with self._get_connection() as con:
+                cursor = con.execute(LOOKUP_PROJECT_LIST, (_path_pattern(index),))
+                return ProjectList(projects=[Project(name) for (name,) in cursor])
 
-    def get_metadata(self, filename: str, index: str) -> bytes | None:
-        with self._connection as cursor:
-            result = cursor.execute(LOOKUP_METADATA, (filename, _path_pattern(index))).fetchone()
-        return result[0] if result else None
+        return await to_thread.run_sync(run, limiter=self._limiter)
+
+    async def get_project_detail(self, project: NormalizedName, index: str) -> ProjectDetail:
+
+        def run() -> ProjectDetail:
+            detail = ProjectDetail(name=project)
+            with self._get_connection() as con:
+                cursor = con.execute(LOOKUP_PROJECT_DETAIL, (project, _path_pattern(index)))
+                for version, dist in cursor:
+                    detail.versions.append(version)
+                    detail.files.append(dist)
+            detail.versions = sorted(set(detail.versions))
+            return detail
+
+        return await to_thread.run_sync(run, limiter=self._limiter)
+
+    async def get_metadata(self, filename: str, index: str) -> bytes | None:
+        def run() -> bytes | None:
+            with self._get_connection() as con:
+                result = con.execute(LOOKUP_METADATA, (filename, _path_pattern(index))).fetchone()
+            return result[0] if result else None
+
+        return await to_thread.run_sync(run, limiter=self._limiter)
 
 
 def _path_pattern(prefix: str) -> str:

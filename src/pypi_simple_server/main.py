@@ -2,7 +2,6 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import replace
 
-from anyio import CapacityLimiter, to_thread
 from packaging.utils import canonicalize_name
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
@@ -19,14 +18,13 @@ from .endpoint_utils import ETagProvider, get_response, handle_etag
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
-limiter = CapacityLimiter(1)
 
 
 async def index(request: Request) -> Response:
     headers = handle_etag(request, None)
     index: str = request.path_params.get("index", "")
 
-    project_list = await to_thread.run_sync(database.get_project_list, index, limiter=limiter)
+    project_list = await database.get_project_list(index)
     if not project_list.projects:
         raise HTTPException(HTTP_404_NOT_FOUND)
 
@@ -43,9 +41,7 @@ async def detail(request: Request) -> Response:
         url = request.url.path.replace(project_raw, project)
         return RedirectResponse(url, status_code=301)
 
-    project_details = await to_thread.run_sync(
-        database.get_project_detail, project, index, limiter=limiter
-    )
+    project_details = await database.get_project_detail(project, index)
     if not project_details.files:
         raise HTTPException(HTTP_404_NOT_FOUND)
     for project_file in project_details.files:
@@ -62,9 +58,7 @@ async def metadata(request: Request) -> Response:
     index: str = request.path_params.get("index", "")
     filename: str = request.path_params["filename"]  # w/o suffix .metadata
 
-    metadata_content = await to_thread.run_sync(
-        database.get_metadata, filename, index, limiter=limiter
-    )
+    metadata_content = await database.get_metadata(filename, index)
     if metadata_content is None:
         raise HTTPException(HTTP_404_NOT_FOUND)
     return Response(metadata_content, headers=headers, media_type="binary/octet-stream")

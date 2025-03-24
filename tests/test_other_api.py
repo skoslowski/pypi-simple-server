@@ -1,4 +1,4 @@
-from starlette.status import HTTP_200_OK
+from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
 from starlette.testclient import TestClient
 
 
@@ -18,3 +18,8 @@ def test_file_metadata(client: TestClient):
     response = client.get("/files/packaging-24.2-py3-none-any.whl.metadata")
     assert response.status_code == HTTP_200_OK
     assert response.text.startswith("Metadata-Version: 2.3\n")
+
+
+def test_file_metadata_missing(client: TestClient):
+    response = client.get("/files/packaging-00.0-py3-none-any.whl.metadata")
+    assert response.status_code == HTTP_404_NOT_FOUND
