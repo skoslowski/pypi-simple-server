@@ -85,9 +85,10 @@ class Database:
     read_only: bool = True
 
     def __enter__(self) -> Self:
+        file = self.database_file.absolute()
         mode = "?mode=ro" if self.read_only else ""
         self._connection = sqlite3.connect(
-            f"file://{self.database_file}{mode}",
+            f"file://{file}{mode}",
             uri=True,
             detect_types=sqlite3.PARSE_COLNAMES,
             autocommit=False,
@@ -136,10 +137,10 @@ class Database:
         detail.versions = sorted(set(detail.versions))
         return detail
 
-    def get_metadata(self, filename: str, index: str) -> bytes:
+    def get_metadata(self, filename: str, index: str) -> bytes | None:
         with self._connection as cursor:
             result = cursor.execute(LOOKUP_METADATA, (filename, _path_pattern(index))).fetchone()
-        return result[0]
+        return result[0] if result else None
 
 
 def _path_pattern(prefix: str) -> str:

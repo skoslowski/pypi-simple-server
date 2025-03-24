@@ -64,6 +64,8 @@ async def metadata(request: Request) -> Response:
     metadata_content = await to_thread.run_sync(
         database.get_metadata, filename, index, limiter=limiter
     )
+    if metadata_content is None:
+        raise HTTPException(HTTP_404_NOT_FOUND)
     return Response(metadata_content, headers=headers, media_type="binary/octet-stream")
 
 
