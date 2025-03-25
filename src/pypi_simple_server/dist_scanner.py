@@ -3,7 +3,7 @@ import hashlib
 import logging
 import os
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass, field
 from pathlib import Path
 from tarfile import TarFile
 from time import time
@@ -103,6 +103,8 @@ class ProjectFileReader:
 class FileWatcher:
     watch_dir: Path
     callback: Callable[[], None]
+    _: KW_ONLY
+    ignore: set[Path] = field(default_factory=set)
     quiet_time: int = 10
 
     def __post_init__(self) -> None:
@@ -111,15 +113,20 @@ class FileWatcher:
         self._callback_task = asyncio.create_task(self._run_callback())
 
     async def _run_watch(self) -> None:
-        async for _ in watchfiles.awatch(self.watch_dir.absolute()):
+        async for _ in watchfiles.awatch(
+            self.watch_dir.absolute(), watch_filter=self._watch_filter
+        ):
             if not self._last_change:
                 logger.info("File watch detected changes")
             self._last_change = time()
 
+    def _watch_filter(self, change: watchfiles.Change, file: str) -> bool:
+        return Path(file) not in self.ignore
+
     async def _run_callback(self) -> None:
         while True:
-            if self._last_change and time() < self._last_change + self.quiet_time:
-                self._last_run = None
+            if self._last_change and time() >= self._last_change + self.quiet_time:
+                self._last_change = None
                 try:
                     self.callback()
                 except Exception as e:

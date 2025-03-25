@@ -158,9 +158,10 @@ class Database:
                 try:
                     project, version, dist, metadata = project_file_reader.read(file)
                 except UnhandledFileTypeError:
+                    logger.debug("Ignoring %s", file)
                     continue
-                except InvalidFileError:
-                    logger.warning("Ignoring invalid distribution %s", file)
+                except InvalidFileError as e:
+                    logger.exception("Invalid distribution %s: %s", file, e)
                     continue
 
                 logger.info("Adding %s", file)

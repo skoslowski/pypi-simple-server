@@ -8,5 +8,5 @@ config = Config(
     env_prefix="PYPS_",
 )
 
-BASE_DIR = config("BASE_DIR", cast=Path, default=Path.cwd())
-CACHE_FILE = config("CACHE_FILE", cast=Path, default=BASE_DIR / ".cache.sqlite")
+BASE_DIR = config("BASE_DIR", cast=Path, default=Path.cwd()).absolute()
+CACHE_FILE = config("CACHE_FILE", cast=Path, default=BASE_DIR / ".cache.sqlite").absolute()

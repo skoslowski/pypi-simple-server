@@ -21,10 +21,12 @@ from .endpoint_utils import ETagProvider, get_response, handle_etag
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
 
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=logging.getLogger("uvicorn").handlers or None,
-)
+if not logging.root.hasHandlers():
+    logging.basicConfig(
+        level=logging.WARNING,
+        handlers=logging.getLogger("uvicorn").handlers or None,
+    )
+    logging.getLogger(__package__).setLevel(logging.INFO)
 
 
 async def index(request: Request) -> Response:
@@ -89,7 +91,8 @@ def status(request: Request) -> JSONResponse:
 async def lifespan(app: Starlette):
     CACHE_FILE.parent.mkdir(exist_ok=True, parents=True)
     _update_database()
-    _ = FileWatcher(BASE_DIR, _update_database)
+    watch = FileWatcher(BASE_DIR, _update_database)
+    watch.ignore = {CACHE_FILE, CACHE_FILE.with_name(CACHE_FILE.name + "-journal")}
     with database:
         yield {"etag": ETagProvider(CACHE_FILE)}
 
