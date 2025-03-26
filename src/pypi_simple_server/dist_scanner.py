@@ -102,33 +102,40 @@ class ProjectFileReader:
 @dataclass
 class FileWatcher:
     watch_dir: Path
-    callback: Callable[[], None]
+    callback: Callable[[set[Path]], None]
     _: KW_ONLY
     ignore: set[Path] = field(default_factory=set)
     quiet_time: int = 10
 
     def __post_init__(self) -> None:
-        self._last_change: float | None = None
+        self._next_callback_time: float | None = None
+        self._files_changed: set[Path] = set()
         self._watch_task = asyncio.create_task(self._run_watch())
         self._callback_task = asyncio.create_task(self._run_callback())
 
     async def _run_watch(self) -> None:
-        async for _ in watchfiles.awatch(
+        async for changes in watchfiles.awatch(
             self.watch_dir.absolute(), watch_filter=self._watch_filter
         ):
-            if not self._last_change:
+            if not self._next_callback_time:
                 logger.info("File watch detected changes")
-            self._last_change = time()
+            self._next_callback_time = time() + self.quiet_time
+            self._files_changed.union(Path(s) for c, s in changes)
 
     def _watch_filter(self, change: watchfiles.Change, file: str) -> bool:
         return Path(file) not in self.ignore
 
     async def _run_callback(self) -> None:
         while True:
-            if self._last_change and time() >= self._last_change + self.quiet_time:
-                self._last_change = None
-                try:
-                    self.callback()
-                except Exception as e:
-                    logger.exception("File watch callback failed: %s", e)
-            await asyncio.sleep(10)
+            if not self._next_callback_time or time() < self._next_callback_time:
+                await asyncio.sleep(10)
+                continue
+
+            files_changed = set(self._files_changed)
+            self._next_callback_time = None
+            self._files_changed.clear()
+
+            try:
+                self.callback(files_changed)
+            except Exception as e:
+                logger.exception("File watch callback failed: %s", e)

@@ -1,7 +1,5 @@
-import asyncio
 from collections.abc import Mapping
 from enum import StrEnum
-from hashlib import md5
 from pathlib import Path
 
 import msgspec
@@ -48,31 +46,7 @@ def get_response_media_type(request: Request) -> MediaType:
     raise HTTPException(HTTP_406_NOT_ACCEPTABLE)
 
 
-class ETagProvider:
-    def __init__(self, file: Path) -> None:
-        self.file = file
-        self.last_changed = 0.0
-        self.interval = 1  # second
-        self._check_file()
-        asyncio.create_task(self.updater())
-
-    async def updater(self) -> None:
-        while True:
-            await asyncio.sleep(self.interval)
-            self._check_file()
-
-    def _check_file(self) -> None:
-        try:
-            self.last_changed = self.file.stat().st_mtime
-        except FileNotFoundError:
-            pass
-
-    def __str__(self) -> str:
-        return md5(str(self.last_changed).encode()).hexdigest()
-
-
-def handle_etag(request: Request, etag: str | None, weak: bool = True) -> dict[str, str]:
-    etag = etag or getattr(request.state, "etag", None)
+def handle_etag(request: Request, etag: str, weak: bool = True) -> dict[str, str]:
     if etag and weak:
         etag = f'W/"{etag}"'
 
