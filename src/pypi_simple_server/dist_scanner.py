@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import logging
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import KW_ONLY, dataclass, field
 from pathlib import Path
 from tarfile import TarFile
@@ -102,7 +102,7 @@ class ProjectFileReader:
 @dataclass
 class FileWatcher:
     watch_dir: Path
-    callback: Callable[[set[Path]], None]
+    callback: Callable[[set[Path]], Awaitable[None]]
     _: KW_ONLY
     ignore: set[Path] = field(default_factory=set)
     quiet_time: int = 10
@@ -114,9 +114,7 @@ class FileWatcher:
         self._callback_task = asyncio.create_task(self._run_callback())
 
     async def _run_watch(self) -> None:
-        async for changes in watchfiles.awatch(
-            self.watch_dir.absolute(), watch_filter=self._watch_filter
-        ):
+        async for changes in watchfiles.awatch(self.watch_dir.absolute(), watch_filter=self._watch_filter):
             if not self._next_callback_time:
                 logger.info("File watch detected changes")
             self._next_callback_time = time() + self.quiet_time
@@ -136,6 +134,6 @@ class FileWatcher:
             self._files_changed.clear()
 
             try:
-                self.callback(files_changed)
+                await self.callback(files_changed)
             except Exception as e:
                 logger.exception("File watch callback failed: %s", e)

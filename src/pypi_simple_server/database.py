@@ -150,7 +150,7 @@ class Database:
             fields = [column[0] for column in cursor.description]
             return [{key: value for key, value in zip(fields, row)} for row in cursor]
 
-    def update(self, project_file_reader: ProjectFileReader) -> None:
+    def _update(self, project_file_reader: ProjectFileReader) -> None:
         with self._get_connection() as con:
             for index, file in project_file_reader:
                 if con.execute(CHECK_DIST, (file.name, index)).fetchone()[0]:
@@ -176,6 +176,9 @@ class Database:
             con.executemany(REMOVE_DIST, to_remove)
 
         self.filepath.touch(exist_ok=True)
+
+    async def update(self, project_file_reader: ProjectFileReader) -> None:
+        return await to_thread.run_sync(self._update, project_file_reader, limiter=self._limiter)
 
     async def get_project_list(self, index: str) -> ProjectList:
         def run() -> ProjectList:
