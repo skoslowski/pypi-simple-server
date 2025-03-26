@@ -36,9 +36,8 @@ GET_STATS = """
 """
 
 GET_STATS_PER_INDEX = """
-    SELECT "index", COUNT(*) as distributions, COUNT(DISTINCT project) as projects
+    SELECT "index", "project", "filename"
     FROM Distribution
-    GROUP BY "index"
 """
 
 GET_PROJECT_LIST = """
@@ -147,9 +146,22 @@ class Database:
 
     def stats_per_index(self):
         with self._get_connection() as con:
-            cursor = con.execute(GET_STATS_PER_INDEX)
-            fields = [column[0] for column in cursor.description]
-            return [{key: value for key, value in zip(fields, row)} for row in cursor]
+            per_index = {}
+            for index, project, dist in con.execute(GET_STATS_PER_INDEX).fetchall():
+                index = f"/{index}" if index != "/" else index
+                per_index.setdefault(index, (set(), set()))
+                for i, counts in per_index.items():
+                    if index.startswith(i):
+                        counts[0].add(project)
+                        counts[1].add(dist)
+            return [
+                {
+                    "index": name.strip("/"),
+                    "projects": len(projects),
+                    "distributions": len(dists),
+                }
+                for name, (projects, dists) in per_index.items()
+            ]
 
     def _update(self, project_file_reader: ProjectFileReader) -> None:
         with self._get_connection() as con:

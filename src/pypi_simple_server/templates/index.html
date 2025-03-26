@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <title>Python Package Index Server</title>
+
+</head>
+
+<body>
+    <main class="container">
+        <h1>Python Package Index Server</h1>
+        <h2>Usage</h2>
+        <p>
+            To use this with pip use
+
+            <pre style="padding:20px;">pip install --index=https://artifactory.procitec.de/pypi/simple ...</pre>
+
+            uv
+
+            <pre style="padding:20px;">uv CMD --default-index=https://artifactory.procitec.de/pypi/simple --native-tls</pre>
+        </p>
+
+        <h2>Indexes</h2>
+        {%- for index in indexes %}
+        <article>
+            <header><a href="simple/{{ index.name }}">Index "{{ index.index | e }}"</a></header>
+            <p>Projects: {{ index.projects }}</p>
+            <p>Distributions: {{ index.distributions }}</p>
+        </article>
+        {%- endfor %}
+    </main>
+</body>
+
+</html>

@@ -82,28 +82,17 @@ async def ping(request: Request) -> PlainTextResponse:
 
 def index(request: Request) -> Response:
     headers = {
-        **handle_etag(request, etag),
+        **handle_etag(request, ""),
         "Cache-Control": "max-age=600, public",
     }
 
     last_changed = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, UTC)
-
-    result = {
+    context = {
         "global": msgspec.to_builtins(database.stats()),
         "indexes": database.stats_per_index(),
         "last_update": last_changed.replace(microsecond=0).astimezone().isoformat(),
     }
-    return templates.TemplateResponse(
-        request,
-        "status.html",
-        context={
-        "global": msgspec.to_builtins(database.stats()),
-        "indexes": database.stats_per_index(),
-        "last_update": last_changed.replace(microsecond=0).astimezone().isoformat(),
-    },
-        headers=headers,
-        media_type=MediaType.HTML_V1,
-    )
+    return templates.TemplateResponse(request, "index.html", context=context, headers=headers)
 
 
 def status(request: Request) -> Response:

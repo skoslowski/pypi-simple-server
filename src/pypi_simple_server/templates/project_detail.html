@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="pypi:repository-version" content="{{ model.meta.api_version }}" />
+    <title>Links for {{ model.name }}</title>
+</head>
+<body>
+    <h1>Links for {{ model.name }}</h1>
+    {%- for file in model.files %}
+    <a href="{{ file.url}}#{{ file.hashes | items | first | join('=') }}"
+        {%- if file.requires_python %} data-requires-python="{{ file.requires_python }}"{% endif -%}
+        {%- if file.yanked %} data-yanked="{{ file.yanked }}"{% endif -%}
+        {%- if file.core_metadata %} data-core_metadata="{{ file.core_metadata  | items | first | join('=') }}"{% endif -%}
+    >{{ file.filename }}</a><br />
+    {%- endfor %}
+</body>
+</html>

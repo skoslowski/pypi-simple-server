@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="pypi:repository-version" content="{{ model.meta.api_version }}" />
+    <title>Simple Index</title>
+</head>
+<body>
+    {%- for project in model.projects %}
+    <a href="{{ project.name }}/">{{ project.name }}</a>
+    {%- endfor %}
+</body>
+</html>
