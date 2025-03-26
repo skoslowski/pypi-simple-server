@@ -86,7 +86,7 @@ class ProjectFileReader:
         except ProjectReaderError:
             raise
         except Exception as e:
-            raise InvalidFileError from e
+            raise InvalidFileError(file) from e
 
         dist = ProjectFile(
             filename=file.name,
