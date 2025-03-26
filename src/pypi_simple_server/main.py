@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
 etag = ""
 
-if not logging.root.hasHandlers():
+if not logging.root.hasHandlers():  # pragma: no cover
     logging.basicConfig(
         level=logging.WARNING,
         handlers=logging.getLogger("uvicorn").handlers or None,

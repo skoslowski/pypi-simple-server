@@ -2,7 +2,9 @@ import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from zipfile import ZipFile
 
+import msgspec
 import pytest
 
 from pypi_simple_server.database import Database, Stats
@@ -59,7 +61,7 @@ def test_new_project(project_file_reader: ProjectFileReader, database: Database)
     assert database.stats() == DEFAULT_STATS
 
 
-def test_removed_project(project_file_reader: ProjectFileReader, database: Database):
+def test_removed_dist(project_file_reader: ProjectFileReader, database: Database):
     to_remove = list(project_file_reader.files_dir.rglob("iniconfig*"))
     assert len(to_remove) == 3
 
@@ -72,3 +74,24 @@ def test_removed_project(project_file_reader: ProjectFileReader, database: Datab
     database._update(project_file_reader)
     print(database.stats_per_index())
     assert database.stats() == Stats(8, 3, 2)
+
+
+def test_conflicting_dist(
+    project_file_reader: ProjectFileReader, database: Database, caplog: pytest.LogCaptureFixture
+):
+    dist_to_patch = next(project_file_reader.files_dir.rglob("ext/ini*whl"))
+    expected_stats = msgspec.structs.replace(DEFAULT_STATS, distributions=10)
+
+    with rename_files([dist_to_patch]):
+        database._update(project_file_reader)
+        assert database.stats() == expected_stats
+
+    with ZipFile(dist_to_patch, "a") as zip:
+        zip.comment += b"XXXX"
+
+    caplog.clear()
+
+    database._update(project_file_reader)
+
+    assert database.stats() == expected_stats
+    assert f"Conflicting distribution {dist_to_patch}" in caplog.text

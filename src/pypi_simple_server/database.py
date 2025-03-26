@@ -20,6 +20,7 @@ BUILD_TABLE = """
     CREATE TABLE IF NOT EXISTS Distribution (
         "index" TEXT NOT NULL,
         "filename" TEXT NOT NULL,
+        "sha256" TEXT NOT NULL,
         "project" TEXT NOT NULL,
         "version" TEXT NOT NULL,
         "file" ProjectFile NOT NULL,
@@ -63,9 +64,9 @@ GET_METADATA = """
 """
 
 CHECK_DIST = """
-    SELECT COUNT(*)
+    SELECT "index", "sha256"
     FROM Distribution
-    WHERE "filename" = ? AND "index" = ?
+    WHERE "filename" = ?
 """
 
 LIST_DISTS = """
@@ -74,7 +75,7 @@ LIST_DISTS = """
 """
 
 STORE_DIST = """
-    INSERT INTO Distribution VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO Distribution VALUES (?, ?, ?, ?, ?, ?, ?)
 """
 
 REMOVE_DIST = """
@@ -153,7 +154,8 @@ class Database:
     def _update(self, project_file_reader: ProjectFileReader) -> None:
         with self._get_connection() as con:
             for index, file in project_file_reader:
-                if con.execute(CHECK_DIST, (file.name, index)).fetchone()[0]:
+                known = con.execute(CHECK_DIST, (file.name,)).fetchall()
+                if any(i == index for i, _ in known):
                     continue
                 try:
                     project, version, dist, metadata = project_file_reader.read(file)
@@ -164,8 +166,22 @@ class Database:
                     logger.exception("Invalid distribution %s: %s", file, e)
                     continue
 
+                conflicts = (f"{i}{file.name}" for i, s in known if s != dist.hashes["sha256"])
+                if other := next(conflicts, None):
+                    logger.error("Conflicting distribution %s: hash conflict with %s", file, other)
+                    continue
+
                 logger.info("Adding %s", file)
-                con.execute(STORE_DIST, (index, file.name, project, version, dist, metadata))
+                parameters = (
+                    index,
+                    file.name,
+                    dist.hashes["sha256"],
+                    project,
+                    version,
+                    dist,
+                    metadata,
+                )
+                con.execute(STORE_DIST, parameters)
 
             to_remove = set()
             for filename, index in con.execute(LIST_DISTS):
