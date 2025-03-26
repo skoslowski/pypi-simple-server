@@ -1,7 +1,5 @@
-import asyncio
 from collections.abc import Mapping
 from enum import StrEnum
-from hashlib import md5
 from pathlib import Path
 
 import msgspec
@@ -48,41 +46,16 @@ def get_response_media_type(request: Request) -> MediaType:
     raise HTTPException(HTTP_406_NOT_ACCEPTABLE)
 
 
-class ETagProvider:
-    def __init__(self, file: Path) -> None:
-        self.file = file
-        self.last_changed = 0.0
-        self.interval = 1  # second
-        self._check_file()
-        asyncio.create_task(self.updater())
+def handle_etag(request: Request, etag: str, weak: bool = True) -> dict[str, str]:
+    headers = {"etag": ("W/" if weak else "") + f'"{etag}"'} if etag else {}
 
-    async def updater(self) -> None:
-        while True:
-            await asyncio.sleep(self.interval)
-            self._check_file()
+    if (client_etags := request.headers.get("if-none-match")) and etag:
+        if any(etag == client_etag.strip(' W/"') for client_etag in client_etags.split(",")):
+            raise HTTPException(HTTP_304_NOT_MODIFIED, headers=headers)
 
-    def _check_file(self) -> None:
-        try:
-            self.last_changed = self.file.stat().st_mtime
-        except FileNotFoundError:
-            pass
-
-    def __str__(self) -> str:
-        return md5(str(self.last_changed).encode()).hexdigest()
-
-
-def handle_etag(request: Request, etag: str | None, weak: bool = True) -> dict[str, str]:
-    etag = etag or getattr(request.state, "etag", None)
-    if etag and weak:
-        etag = f'W/"{etag}"'
-
-    headers = {"etag": etag} if etag else {}
-
-    if (client_etag := request.headers.get("if-none-match")) and etag == client_etag:
-        raise HTTPException(HTTP_304_NOT_MODIFIED, headers=headers)
-
-    elif (client_etag := request.headers.get("if-match")) and etag != client_etag:
-        raise HTTPException(HTTP_412_PRECONDITION_FAILED, headers=headers)
+    elif client_etag := request.headers.get("if-match"):
+        if etag != client_etag.strip(' W/"'):
+            raise HTTPException(HTTP_412_PRECONDITION_FAILED, headers=headers)
 
     return headers
 

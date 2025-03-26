@@ -44,7 +44,10 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=pypi_simple_server"
+addopts = [
+    "--cov=pypi_simple_server",
+    "--import-mode=importlib",
+]
 testpaths = [
     "tests",
 ]
