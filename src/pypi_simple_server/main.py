@@ -94,7 +94,7 @@ def status(request: Request) -> JSONResponse:
 async def lifespan(app: Starlette):
     CACHE_FILE.parent.mkdir(exist_ok=True, parents=True)
 
-    _handle_file_change({CACHE_FILE, BASE_DIR})
+    await _handle_file_change({CACHE_FILE, BASE_DIR})
     watch = FileWatcher(BASE_DIR, _handle_file_change)
     watch.ignore = {CACHE_FILE.with_name(CACHE_FILE.name + "-journal")}
 
@@ -102,13 +102,13 @@ async def lifespan(app: Starlette):
         yield
 
 
-def _handle_file_change(files: set[Path]) -> None:
+async def _handle_file_change(files: set[Path]) -> None:
     global etag
 
     if files != {CACHE_FILE}:
         logger.info("Updating database")
         with replace(database, read_only=False) as db:
-            db.update(ProjectFileReader(BASE_DIR))
+            await db.update(ProjectFileReader(BASE_DIR))
 
     if CACHE_FILE in files:
         logger.info("Updating ETag")
