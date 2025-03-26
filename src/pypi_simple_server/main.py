@@ -18,7 +18,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from .config import BASE_DIR, CACHE_FILE
 from .database import Database
 from .dist_scanner import FileWatcher, ProjectFileReader
-from .endpoint_utils import get_response, handle_etag
+from .endpoint_utils import get_response, handle_etag, templates
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
@@ -32,7 +32,7 @@ if not logging.root.hasHandlers():  # pragma: no cover
     logging.getLogger(__package__).setLevel(logging.INFO)
 
 
-async def index(request: Request) -> Response:
+async def project_index(request: Request) -> Response:
     headers = handle_etag(request, etag)
     index: str = request.path_params.get("index", "")
 
@@ -40,10 +40,10 @@ async def index(request: Request) -> Response:
     if not project_list.projects:
         raise HTTPException(HTTP_404_NOT_FOUND)
 
-    return get_response(request, headers, project_list, "index.html")
+    return get_response(request, headers, project_list, "project_index.html")
 
 
-async def detail(request: Request) -> Response:
+async def project_detail(request: Request) -> Response:
     headers = handle_etag(request, etag)
     index: str = request.path_params.get("index", "")
     project_raw: str = request.path_params["project"]
@@ -59,10 +59,10 @@ async def detail(request: Request) -> Response:
     for project_file in project_details.files:
         project_file.url = str(request.url_for("files", path=project_file.url))
 
-    return get_response(request, headers, project_details, "detail.html")
+    return get_response(request, headers, project_details, "project_detail.html")
 
 
-async def metadata(request: Request) -> Response:
+async def distribution_metadata(request: Request) -> Response:
     headers = {
         **handle_etag(request, etag),
         "Cache-Control": "max-age=600, public",
@@ -80,7 +80,33 @@ async def ping(request: Request) -> PlainTextResponse:
     return PlainTextResponse("")
 
 
-def status(request: Request) -> JSONResponse:
+def index(request: Request) -> Response:
+    headers = {
+        **handle_etag(request, etag),
+        "Cache-Control": "max-age=600, public",
+    }
+
+    last_changed = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, UTC)
+
+    result = {
+        "global": msgspec.to_builtins(database.stats()),
+        "indexes": database.stats_per_index(),
+        "last_update": last_changed.replace(microsecond=0).astimezone().isoformat(),
+    }
+    return templates.TemplateResponse(
+        request,
+        "status.html",
+        context={
+        "global": msgspec.to_builtins(database.stats()),
+        "indexes": database.stats_per_index(),
+        "last_update": last_changed.replace(microsecond=0).astimezone().isoformat(),
+    },
+        headers=headers,
+        media_type=MediaType.HTML_V1,
+    )
+
+
+def status(request: Request) -> Response:
     last_changed = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, UTC)
     result = {
         "global": msgspec.to_builtins(database.stats()),
@@ -118,13 +144,14 @@ async def _handle_file_change(files: set[Path]) -> None:
 static_files = StaticFiles(directory=BASE_DIR)
 
 routes = [
-    Route("/", endpoint=status),
+    Route("/", endpoint=index),
+    Route("/status", endpoint=status),
     Route("/ping", endpoint=ping),
-    Route("/simple/", endpoint=index),
-    Route("/simple/{project}/", endpoint=detail),
-    Route("/{index:path}/simple/", endpoint=index),
-    Route("/{index:path}/simple/{project}/", endpoint=detail),
-    Route("/files/{filename:path}.metadata", endpoint=metadata),
+    Route("/simple/", endpoint=project_index),
+    Route("/simple/{project}/", endpoint=project_detail),
+    Route("/{index:path}/simple/", endpoint=project_index),
+    Route("/{index:path}/simple/{project}/", endpoint=project_detail),
+    Route("/files/{filename:path}.metadata", endpoint=distribution_metadata),
     Mount("/files", static_files, name="files"),
 ]
 
