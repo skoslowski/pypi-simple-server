@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from enum import StrEnum
+from functools import lru_cache
 from pathlib import Path
 
 import msgspec
@@ -24,24 +25,33 @@ class MediaType(StrEnum):
     HTML_LATEST = "application/vnd.pypi.simple.latest+html"
 
 
-_ACCEPTABLE: dict[MediaType, set[str]] = {
-    MediaType.JSON_V1: {
-        MediaType.JSON_LATEST,
-        MediaType.JSON_V1,
-    },
-    MediaType.HTML_V1: {
-        MediaType.HTML_LATEST,
-        MediaType.HTML_V1,
-        "text/html",
-        "*/*",
-    },
+_ACCEPTABLE: dict[str, MediaType] = {
+    MediaType.JSON_LATEST: MediaType.JSON_V1,
+    MediaType.JSON_V1: MediaType.JSON_V1,
+    MediaType.HTML_LATEST: MediaType.HTML_V1,
+    MediaType.HTML_V1: MediaType.HTML_V1,
+    "text/html": MediaType.HTML_V1,
+    "text/*": MediaType.HTML_V1,
+    "*/*": MediaType.HTML_V1,
 }
 
 
-def get_response_media_type(request: Request) -> MediaType:
-    accepts = set(request.headers.get("accept", "*/*").split(","))
-    for media_type, acceptable in _ACCEPTABLE.items():
-        if acceptable & accepts:
+def _parse_accept_entry(value: str) -> tuple[float, int, str]:
+    type_, _, q_factor = value.strip().partition(";q=")
+    try:
+        priority = max(0.0, min(1.0, float(q_factor)))
+    except Exception:
+        priority = 1.0
+    specificity = 0 if type_ == "*/*" else 1 if type_.endswith("/*") else 0
+    return priority, specificity, type_
+
+
+@lru_cache
+def get_response_media_type(accept_header: str | None) -> MediaType:
+    """https://packaging.python.org/en/latest/specifications/simple-repository-api/#version-format-selection"""
+    accepts = list(_parse_accept_entry(mt) for mt in (accept_header or "*/*").split(","))
+    for *_, accept in sorted(accepts, reverse=True):
+        if media_type := _ACCEPTABLE.get(accept):
             return media_type
     raise HTTPException(HTTP_406_NOT_ACCEPTABLE)
 
@@ -66,7 +76,7 @@ def get_response(
     model: msgspec.Struct,
     template: str,
 ) -> Response:
-    media_type = get_response_media_type(request)
+    media_type = get_response_media_type(request.headers.get("accept"))
     headers = {
         **headers,
         "Cache-Control": "max-age=600, public",
