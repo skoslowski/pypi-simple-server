@@ -57,7 +57,7 @@ def test_new_project(project_file_reader: ProjectFileReader, database: Database)
         assert database.stats() == Stats(8, 3, 2)
 
     database._update(project_file_reader)
-    print(database.stats_per_index())
+    print(database.stats_per_index(project_file_reader.files_dir))
     assert database.stats() == DEFAULT_STATS
 
 
@@ -72,7 +72,7 @@ def test_removed_dist(project_file_reader: ProjectFileReader, database: Database
         file.unlink()
 
     database._update(project_file_reader)
-    print(database.stats_per_index())
+    print(database.stats_per_index(project_file_reader.files_dir))
     assert database.stats() == Stats(8, 3, 2)
 
 

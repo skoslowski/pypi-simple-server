@@ -1,9 +1,11 @@
 import logging
 import queue
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Self
 
@@ -36,9 +38,8 @@ GET_STATS = """
 """
 
 GET_STATS_PER_INDEX = """
-    SELECT "index", COUNT(*) as distributions, COUNT(DISTINCT project) as projects
+    SELECT "index", "project", "filename"
     FROM Distribution
-    GROUP BY "index"
 """
 
 GET_PROJECT_LIST = """
@@ -145,11 +146,31 @@ class Database:
         with self._get_connection() as con:
             return Stats(*con.execute(GET_STATS).fetchone())
 
-    def stats_per_index(self):
+    def stats_per_index(self, base_dir: Path):
         with self._get_connection() as con:
-            cursor = con.execute(GET_STATS_PER_INDEX)
-            fields = [column[0] for column in cursor.description]
-            return [{key: value for key, value in zip(fields, row)} for row in cursor]
+            per_index = {}
+            ctime = time.time()
+            mtime = 0.0
+            for index, project, dist in con.execute(GET_STATS_PER_INDEX).fetchall():
+                stat = base_dir.joinpath(index.strip("/"), dist).stat()
+                mtime = max(mtime, stat.st_mtime)
+                ctime = min(ctime, stat.st_ctime)
+                index = f"/{index}" if index != "/" else index
+                per_index.setdefault(index, (set(), set()))
+                for i, counts in per_index.items():
+                    if index.startswith(i):
+                        counts[0].add(project)
+                        counts[1].add(dist)
+            return [
+                {
+                    "index": name.strip("/"),
+                    "projects": len(projects),
+                    "distributions": len(dists),
+                    "created": datetime.fromtimestamp(ctime),
+                    "modified": datetime.fromtimestamp(mtime),
+                }
+                for name, (projects, dists) in per_index.items()
+            ]
 
     def _update(self, project_file_reader: ProjectFileReader) -> None:
         with self._get_connection() as con:
