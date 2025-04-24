@@ -2,7 +2,6 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
-from hashlib import md5
 from pathlib import Path
 
 import msgspec
@@ -18,13 +17,19 @@ from starlette.status import HTTP_404_NOT_FOUND
 from .config import BASE_DIR, CACHE_FILE, FILES_DIR
 from .database import Database
 from .dist_scanner import FileWatcher, ProjectFileReader
-from .endpoint_utils import get_response, handle_etag
+from .endpoint_utils import ResponseHeaders, get_response, handle_conditional_request
 from .files_dir import FilesDir
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
 files_dir = FilesDir(directory=FILES_DIR)
-etag = ""
+response_headers = ResponseHeaders(
+    {
+        "Cache-Control": "max-age=600, public",
+        "Vary": "Accept, Accept-Encoding",
+    }
+)
+
 
 if not logging.root.hasHandlers():  # pragma: no cover
     logging.basicConfig(
@@ -35,18 +40,18 @@ if not logging.root.hasHandlers():  # pragma: no cover
 
 
 async def index(request: Request) -> Response:
-    headers = handle_etag(request, etag)
+    handle_conditional_request(request.headers, response_headers)
     index: str = request.path_params.get("index", "")
 
     project_list = await database.get_project_list(index)
     if not project_list.projects:
         raise HTTPException(HTTP_404_NOT_FOUND)
 
-    return get_response(request, headers, project_list, "index.html")
+    return get_response(request, response_headers, project_list, "index.html")
 
 
 async def detail(request: Request) -> Response:
-    headers = handle_etag(request, etag)
+    handle_conditional_request(request.headers, response_headers)
     index: str = request.path_params.get("index", "")
     project_raw: str = request.path_params["project"]
 
@@ -61,7 +66,7 @@ async def detail(request: Request) -> Response:
     for project_file in project_details.files:
         project_file.url = str(request.url_for("files", path=project_file.url))
 
-    return get_response(request, headers, project_details, "detail.html")
+    return get_response(request, response_headers, project_details, "detail.html")
 
 
 async def ping(request: Request) -> PlainTextResponse:
@@ -93,17 +98,16 @@ async def lifespan(app: Starlette):
 
 
 async def _handle_file_change(files: set[Path]) -> None:
-    global etag
-
-    if files != {CACHE_FILE}:
+    if files and files != {CACHE_FILE}:
         logger.info("Updating database")
         with replace(database, read_only=False) as db:
             reader = ProjectFileReader(BASE_DIR, ignore_dirs={files_dir.directory})
             await db.update(reader, files_dir)
+        logger.info("Completed database update")
 
     if CACHE_FILE in files:
-        logger.info("Updating ETag")
-        etag = md5(str(CACHE_FILE.stat().st_mtime).encode(), usedforsecurity=False).hexdigest()
+        logger.info("Updating response headers after database update")
+        response_headers.update_changed(CACHE_FILE.stat().st_mtime)
 
 
 routes = [

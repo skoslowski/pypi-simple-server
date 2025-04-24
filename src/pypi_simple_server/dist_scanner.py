@@ -126,7 +126,7 @@ class FileWatcher:
     async def _run_watch(self) -> None:
         async for changes in watchfiles.awatch(self.watch_dir.absolute(), watch_filter=self._watch_filter):
             if not self._next_callback_time:
-                logger.info("File watch detected changes")
+                logger.info("File watch detected changes (quiet time %ss)", self.quiet_time)
             self._next_callback_time = time() + self.quiet_time
             self._files_changed.union(Path(s) for c, s in changes)
 
@@ -143,6 +143,7 @@ class FileWatcher:
             self._next_callback_time = None
             self._files_changed.clear()
 
+            logger.info("File watch reporting %d changed files", len(files_changed))
             try:
                 await self.callback(files_changed)
             except Exception as e:

@@ -1,9 +1,12 @@
 from collections.abc import Mapping
+from email.utils import formatdate, parsedate
 from enum import StrEnum
 from functools import lru_cache
+from hashlib import md5
 from pathlib import Path
 
 import msgspec
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
@@ -56,18 +59,37 @@ def get_response_media_type(accept_header: str | None) -> MediaType:
     raise HTTPException(HTTP_406_NOT_ACCEPTABLE)
 
 
-def handle_etag(request: Request, etag: str, weak: bool = True) -> dict[str, str]:
-    headers = {"etag": ("W/" if weak else "") + f'"{etag}"'} if etag else {}
+class ResponseHeaders(MutableHeaders):
+    def update_changed(self, mtime: float) -> None:
+        self["last-modified"] = formatdate(mtime, usegmt=True)
+        etag = f'"{md5(str(mtime).encode(), usedforsecurity=False).hexdigest()}"'
+        self["etag"] = f"W/{etag}"
 
-    if (client_etags := request.headers.get("if-none-match")) and etag:
-        if any(etag == client_etag.strip(' W/"') for client_etag in client_etags.split(",")):
-            raise HTTPException(HTTP_304_NOT_MODIFIED, headers=headers)
 
-    elif client_etag := request.headers.get("if-match"):
-        if etag != client_etag.strip(' W/"'):
-            raise HTTPException(HTTP_412_PRECONDITION_FAILED, headers=headers)
+def handle_conditional_request(request_headers: Headers, response_headers: Headers) -> None:
+    try:
+        if_none_match = request_headers["if-none-match"]
+        etag = response_headers["etag"].removeprefix("W/")
+        if etag in [tag.strip(" W/") for tag in if_none_match.split(",")]:
+            raise HTTPException(HTTP_304_NOT_MODIFIED, headers=response_headers)
+    except KeyError:
+        pass
 
-    return headers
+    try:
+        if_modified_since = parsedate(request_headers["if-modified-since"])
+        last_modified = parsedate(response_headers["last-modified"])
+        if if_modified_since is not None and last_modified is not None and if_modified_since >= last_modified:
+            raise HTTPException(HTTP_304_NOT_MODIFIED, headers=response_headers)
+    except KeyError:
+        pass
+
+    try:
+        if_match = request_headers["if-match"]
+        etag = response_headers["etag"].removeprefix("W/")
+        if etag != if_match.strip("W/"):
+            raise HTTPException(HTTP_412_PRECONDITION_FAILED, headers=response_headers)
+    except KeyError:
+        pass
 
 
 def get_response(
@@ -77,11 +99,6 @@ def get_response(
     template: str,
 ) -> Response:
     media_type = get_response_media_type(request.headers.get("accept"))
-    headers = {
-        **headers,
-        "Cache-Control": "max-age=600, public",
-        "Vary": "Accept, Accept-Encoding",
-    }
     if media_type == MediaType.HTML_V1:
         return templates.TemplateResponse(
             request,
