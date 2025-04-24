@@ -1,5 +1,7 @@
 .venv
 dist
+htmlcov
+tests/data
 tests/files
 tests/*.sqlite
 .coverage

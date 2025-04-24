@@ -57,7 +57,7 @@ def test_root_project(client: TestClient):
             {
                 "filename": "pytest-8.3.0-py3-none-any.whl",
                 "size": 341630,
-                "url": "http://testserver/pypi/files/pytest-8.3.0-py3-none-any.whl",
+                "url": "http://testserver/pypi/files/a1/pytest-8.3.0-py3-none-any.whl",
                 "hashes": {"sha256": "a1b30492f2676b476266a87f6551345fb25c0484fb6d09c86aa2eb07b5f71c2f"},
                 "requires_python": ">=3.8",
                 "core_metadata": {
@@ -67,7 +67,7 @@ def test_root_project(client: TestClient):
             {
                 "filename": "pytest-8.3.4-py3-none-any.whl",
                 "size": 343083,
-                "url": "http://testserver/pypi/files/pytest-8.3.4-py3-none-any.whl",
+                "url": "http://testserver/pypi/files/50/pytest-8.3.4-py3-none-any.whl",
                 "hashes": {"sha256": "50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6"},
                 "requires_python": ">=3.8",
                 "core_metadata": {
@@ -77,7 +77,7 @@ def test_root_project(client: TestClient):
             {
                 "filename": "pytest-8.3.4.tar.gz",
                 "size": 1445919,
-                "url": "http://testserver/pypi/files/pytest-8.3.4.tar.gz",
+                "url": "http://testserver/pypi/files/96/pytest-8.3.4.tar.gz",
                 "hashes": {"sha256": "965370d062bce11e73868e0335abac31b4d3de0e82f4007408d242b4f8610761"},
                 "requires_python": ">=3.8",
                 "core_metadata": {

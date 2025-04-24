@@ -10,3 +10,4 @@ config = Config(
 
 BASE_DIR = config("BASE_DIR", cast=Path, default=Path.cwd()).absolute()
 CACHE_FILE = config("CACHE_FILE", cast=Path, default=BASE_DIR / ".cache.sqlite").absolute()
+FILES_DIR = config("FILES_DIR", cast=Path, default=BASE_DIR / "files").absolute()

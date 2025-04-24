@@ -68,12 +68,16 @@ def _get_file_hashes(filename: Path, blocksize: int = 2 << 13) -> dict[str, str]
 
 @dataclass
 class ProjectFileReader:
-    files_dir: Path
+    base_dir: Path
+    _: KW_ONLY
+    ignore_dirs: set[Path] = field(default_factory=set)
 
     def __iter__(self) -> Iterator[tuple[str, Path]]:
-        for root, _, files in os.walk(self.files_dir):
+        for root, _, files in os.walk(self.base_dir):
             root_dir = Path(root)
-            index = f"{root_dir.relative_to(self.files_dir).as_posix()}/".lstrip(".")
+            if not self.ignore_dirs.isdisjoint(root_dir.parents):
+                continue
+            index = f"{root_dir.relative_to(self.base_dir).as_posix()}/".lstrip(".")
             for file in files:
                 yield index, root_dir / file
 
@@ -88,15 +92,21 @@ class ProjectFileReader:
         except Exception as e:
             raise InvalidFileError(file) from e
 
+        hashes = _get_file_hashes(file)
+
         dist = ProjectFile(
             filename=file.name,
             size=file.stat().st_size,
-            url=file.relative_to(self.files_dir).as_posix(),
-            hashes=_get_file_hashes(file),
+            url=files_url(file.name, hashes["sha256"]),
+            hashes=hashes,
             requires_python=metadata.get("requires_python"),
             core_metadata={"sha256": hashlib.sha256(metadata_content).hexdigest()},
         )
         return name, version, dist, metadata_content
+
+
+def files_url(filename: str, sha256: str) -> str:
+    return f"{sha256[:2]}/{filename}"
 
 
 @dataclass
@@ -121,7 +131,7 @@ class FileWatcher:
             self._files_changed.union(Path(s) for c, s in changes)
 
     def _watch_filter(self, change: watchfiles.Change, file: str) -> bool:
-        return Path(file) not in self.ignore
+        return self.ignore.isdisjoint(Path(file).parents)
 
     async def _run_callback(self) -> None:
         while True:

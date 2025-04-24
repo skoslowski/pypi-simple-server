@@ -15,13 +15,15 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.status import HTTP_404_NOT_FOUND
 
-from .config import BASE_DIR, CACHE_FILE
+from .config import BASE_DIR, CACHE_FILE, FILES_DIR
 from .database import Database
 from .dist_scanner import FileWatcher, ProjectFileReader
 from .endpoint_utils import get_response, handle_etag
+from .files_dir import FilesDir
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
+files_dir = FilesDir(directory=FILES_DIR)
 etag = ""
 
 if not logging.root.hasHandlers():  # pragma: no cover
@@ -62,20 +64,6 @@ async def detail(request: Request) -> Response:
     return get_response(request, headers, project_details, "detail.html")
 
 
-async def metadata(request: Request) -> Response:
-    headers = {
-        **handle_etag(request, etag),
-        "Cache-Control": "max-age=600, public",
-    }
-    index: str = request.path_params.get("index", "")
-    filename: str = request.path_params["filename"]  # w/o suffix .metadata
-
-    metadata_content = await database.get_metadata(filename, index)
-    if metadata_content is None:
-        raise HTTPException(HTTP_404_NOT_FOUND)
-    return Response(metadata_content, headers=headers, media_type="binary/octet-stream")
-
-
 async def ping(request: Request) -> PlainTextResponse:
     return PlainTextResponse("")
 
@@ -96,8 +84,10 @@ async def lifespan(app: Starlette):
 
     await _handle_file_change({CACHE_FILE, BASE_DIR})
     watch = FileWatcher(BASE_DIR, _handle_file_change)
-    watch.ignore = {CACHE_FILE.with_name(CACHE_FILE.name + "-journal")}
-
+    watch.ignore = {
+        files_dir.directory,
+        CACHE_FILE.with_name(CACHE_FILE.name + "-journal"),
+    }
     with database:
         yield
 
@@ -108,14 +98,13 @@ async def _handle_file_change(files: set[Path]) -> None:
     if files != {CACHE_FILE}:
         logger.info("Updating database")
         with replace(database, read_only=False) as db:
-            await db.update(ProjectFileReader(BASE_DIR))
+            reader = ProjectFileReader(BASE_DIR, ignore_dirs={files_dir.directory})
+            await db.update(reader, files_dir)
 
     if CACHE_FILE in files:
         logger.info("Updating ETag")
         etag = md5(str(CACHE_FILE.stat().st_mtime).encode(), usedforsecurity=False).hexdigest()
 
-
-static_files = StaticFiles(directory=BASE_DIR)
 
 routes = [
     Route("/", endpoint=status),
@@ -124,8 +113,7 @@ routes = [
     Route("/simple/{project}/", endpoint=detail),
     Route("/{index:path}/simple/", endpoint=index),
     Route("/{index:path}/simple/{project}/", endpoint=detail),
-    Route("/files/{filename:path}.metadata", endpoint=metadata),
-    Mount("/files", static_files, name="files"),
+    Mount("/files", StaticFiles(directory=files_dir.directory), name="files"),
 ]
 
 app = Starlette(routes=routes, lifespan=lifespan)
