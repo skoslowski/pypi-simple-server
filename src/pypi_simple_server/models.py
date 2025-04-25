@@ -15,12 +15,12 @@ ProjectName = Annotated[str, M(pattern=r"^([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9._-]
 NormalizedProjectName = Annotated[NormalizedName, M(pattern=r"^([0-9a-z]+-)*[0-9a-z]+$")]
 
 
-class Meta(Struct, frozen=True):
+class Meta(Struct, frozen=True, rename="kebab"):
     # api_version: str = "1.0"  # PEP-629
     api_version: str = "1.1"  # PEP-700
 
 
-class ProjectFile(Struct, omit_defaults=True):
+class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     # PEP-503
     filename: str
     # PEP-700

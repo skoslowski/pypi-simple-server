@@ -35,7 +35,7 @@ def test_root_index(client: TestClient):
     r = client.get("/simple/", headers={"Accept": MediaType.JSON_V1})
     assert r.status_code == HTTP_200_OK
     expected = {
-        "meta": {"api_version": "1.1"},
+        "meta": {"api-version": "1.1"},
         "projects": [
             {"name": "iniconfig"},
             {"name": "packaging"},
@@ -50,7 +50,7 @@ def test_root_project(client: TestClient):
     r = client.get("/simple/pytest/", headers={"Accept": MediaType.JSON_V1})
     assert r.status_code == HTTP_200_OK
     expected = {
-        "meta": {"api_version": "1.1"},
+        "meta": {"api-version": "1.1"},
         "name": "pytest",
         "versions": ["8.3", "8.3.4"],
         "files": [
@@ -59,8 +59,8 @@ def test_root_project(client: TestClient):
                 "size": 341630,
                 "url": "http://testserver/pypi/files/a1/pytest-8.3.0-py3-none-any.whl",
                 "hashes": {"sha256": "a1b30492f2676b476266a87f6551345fb25c0484fb6d09c86aa2eb07b5f71c2f"},
-                "requires_python": ">=3.8",
-                "core_metadata": {
+                "requires-python": ">=3.8",
+                "core-metadata": {
                     "sha256": "cdd29a47b9142b3a3d662c4fa4870139d0c213d3f3853406efc90775b09d06af"
                 },
             },
@@ -69,8 +69,8 @@ def test_root_project(client: TestClient):
                 "size": 343083,
                 "url": "http://testserver/pypi/files/50/pytest-8.3.4-py3-none-any.whl",
                 "hashes": {"sha256": "50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6"},
-                "requires_python": ">=3.8",
-                "core_metadata": {
+                "requires-python": ">=3.8",
+                "core-metadata": {
                     "sha256": "7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28"
                 },
             },
@@ -79,8 +79,8 @@ def test_root_project(client: TestClient):
                 "size": 1445919,
                 "url": "http://testserver/pypi/files/96/pytest-8.3.4.tar.gz",
                 "hashes": {"sha256": "965370d062bce11e73868e0335abac31b4d3de0e82f4007408d242b4f8610761"},
-                "requires_python": ">=3.8",
-                "core_metadata": {
+                "requires-python": ">=3.8",
+                "core-metadata": {
                     "sha256": "7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28"
                 },
             },

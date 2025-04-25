@@ -21,7 +21,9 @@ def current_headers(client: TestClient):
 
 
 def test_etag_if_none_match(client: TestClient, current_headers: dict[str, str]):
-    r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-None-Match": current_headers["etag"]})
+    r = client.head(
+        "/simple/", headers={"Accept": MediaType.JSON_V1, "If-None-Match": current_headers["etag"]}
+    )
     assert r.status_code == HTTP_304_NOT_MODIFIED
 
 
@@ -39,9 +41,14 @@ def test_etag_if_match_outdated(client: TestClient):
     r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Match": "XXX"})
     assert r.status_code == HTTP_412_PRECONDITION_FAILED
 
+
 def test_if_modified_since(client: TestClient, current_headers: dict[str, str]):
-    r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Modified-Since": current_headers["last-modified"]})
+    r = client.head(
+        "/simple/",
+        headers={"Accept": MediaType.JSON_V1, "If-Modified-Since": current_headers["last-modified"]},
+    )
     assert r.status_code == HTTP_304_NOT_MODIFIED
+
 
 def test_if_modified_since_outdated(client: TestClient, current_headers: dict[str, str]):
     r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Modified-Since": formatdate(0)})
