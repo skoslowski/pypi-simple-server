@@ -117,7 +117,7 @@ routes = [
     Route("/simple/{project}/", endpoint=detail),
     Route("/{index:path}/simple/", endpoint=index),
     Route("/{index:path}/simple/{project}/", endpoint=detail),
-    Mount("/files", StaticFiles(directory=files_dir.directory), name="files"),
+    Mount("/files", StaticFiles(directory=files_dir.directory, follow_symlink=True), name="files"),
 ]
 
 app = Starlette(routes=routes, lifespan=lifespan)
