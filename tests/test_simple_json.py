@@ -63,6 +63,7 @@ def test_root_project(client: TestClient):
                 "core-metadata": {
                     "sha256": "cdd29a47b9142b3a3d662c4fa4870139d0c213d3f3853406efc90775b09d06af"
                 },
+                "upload-time": "1111-11-11T11:11:11Z",
             },
             {
                 "filename": "pytest-8.3.4-py3-none-any.whl",
@@ -73,6 +74,7 @@ def test_root_project(client: TestClient):
                 "core-metadata": {
                     "sha256": "7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28"
                 },
+                "upload-time": "1111-11-11T11:11:11Z",
             },
             {
                 "filename": "pytest-8.3.4.tar.gz",
@@ -83,6 +85,7 @@ def test_root_project(client: TestClient):
                 "core-metadata": {
                     "sha256": "7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28"
                 },
+                "upload-time": "1111-11-11T11:11:11Z",
             },
         ],
     }

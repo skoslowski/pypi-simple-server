@@ -35,8 +35,8 @@ class Context:
 
 
 @pytest.fixture
-def context(file_path: Path, tmp_path: Path) -> Iterator[Context]:
-    shutil.copytree(file_path, tmp_path, dirs_exist_ok=True)
+def context(downloads: Path, tmp_path: Path) -> Iterator[Context]:
+    shutil.copytree(downloads, tmp_path, dirs_exist_ok=True)
 
     files = StaticFilesDirGenerator(tmp_path / "files")
     reader = ProjectFileReader(tmp_path, ignore_dirs={files.directory})

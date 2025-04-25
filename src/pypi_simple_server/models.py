@@ -41,6 +41,8 @@ class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     yanked: str | None = None
     # PEP-658, renamed from dist_info_metadata in PEP-714
     core_metadata: Hashes | None = None
+    # PEP-700
+    upload_time: str | None = None
 
 
 class ProjectDetail(Struct, kw_only=True):

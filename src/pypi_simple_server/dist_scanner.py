@@ -4,6 +4,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import KW_ONLY, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from tarfile import TarFile
 from time import time
@@ -110,8 +111,14 @@ class ProjectFileReader:
             hashes=hashes,
             requires_python=metadata.get("requires_python"),
             core_metadata=Hashes(sha256=hashlib.sha256(metadata_content).hexdigest()),
+            upload_time=_format_time(file.stat().st_mtime),
         )
         return FileResult(project, version, hashes.sha256, dist, metadata_content)
+
+
+def _format_time(timestamp: float) -> str:
+    """generate a ISO 8601 / RFC 3339 from timestamp"""
+    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @dataclass

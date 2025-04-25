@@ -1,4 +1,6 @@
 from collections.abc import Iterator
+from datetime import datetime, UTC
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -22,7 +24,7 @@ FILES_REQUIRED = [
 
 
 @pytest.fixture(scope="session")
-def file_path() -> Path:
+def downloads() -> Path:
     download_dir = Path(__file__).with_name("data")
     files_missing: dict[str, list[Path]] = {}
     for entry in FILES_REQUIRED:
@@ -33,8 +35,14 @@ def file_path() -> Path:
         files_missing.setdefault(project, []).append(download_dir / file)
     if files_missing:
         download(files_missing)
+
+    ts = datetime(1111, 11, 11, 11, 11, 11, tzinfo=UTC).timestamp()
+    for entry in FILES_REQUIRED:
+        if "pytest" in entry:
+            os.utime(download_dir / entry, (ts, ts))
     download_dir.joinpath("not-a-dist.txt").touch()
     download_dir.joinpath("invalid-dist.tar.gz").touch()
+
     return download_dir
 
 
@@ -51,11 +59,11 @@ def download(files_missing: dict[str, list[Path]]) -> None:
 
 
 @pytest.fixture(scope="session")
-def client(file_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
+def client(downloads: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
     from pypi_simple_server import config
 
-    patch_config = mock.patch.object(config, "CACHE_FILE", tmp_path_factory.mktemp("cache") / "db.sqlite")
-    from pypi_simple_server.main import app
+    with mock.patch.object(config, "CACHE_FILE", tmp_path_factory.mktemp("cache") / "db.sqlite"):
+        from pypi_simple_server.main import app
 
-    with patch_config, TestClient(app, root_path="/pypi") as client:
-        yield client
+        with TestClient(app, root_path="/pypi") as client:
+            yield client
