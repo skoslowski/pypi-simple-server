@@ -4,7 +4,7 @@ import pytest
 from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
 from starlette.testclient import TestClient
 
-from pypi_simple_server.files_dir import _relative_to
+from pypi_simple_server.static_files_gen import _relative_to
 
 CASES = [
     ("/a.py", "/", "a.py"),

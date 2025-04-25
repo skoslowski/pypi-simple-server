@@ -11,9 +11,9 @@ import msgspec
 from anyio import CapacityLimiter, to_thread
 from packaging.utils import NormalizedName
 
-from .dist_scanner import InvalidFileError, ProjectFileReader, UnhandledFileTypeError, files_url
-from .files_dir import FilesDir
+from .dist_scanner import InvalidFileError, ProjectFileReader, UnhandledFileTypeError
 from .models import Project, ProjectDetail, ProjectFile, ProjectList
+from .static_files_gen import StaticFilesDirGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,9 @@ class Database:
             fields = [column[0] for column in cursor.description]
             return [{key: value for key, value in zip(fields, row)} for row in cursor]
 
-    async def update(self, project_file_reader: ProjectFileReader, static_files: FilesDir) -> None:
+    async def update(
+        self, project_file_reader: ProjectFileReader, static_files: StaticFilesDirGenerator
+    ) -> None:
         def run() -> None:
             with self._get_connection() as con:
                 _add_new(con, project_file_reader, static_files)
@@ -185,14 +187,14 @@ def _path_pattern(prefix: str) -> str:
 def _add_new(
     con: sqlite3.Connection,
     project_file_reader: ProjectFileReader,
-    static_files: FilesDir,
+    static_files: StaticFilesDirGenerator,
 ) -> None:
     for index, file in project_file_reader:
         known: list[tuple[str, str]] = con.execute(CHECK_DIST, (file.name,)).fetchall()
         if any(i == index for i, _ in known):
             continue
         try:
-            project, version, dist, metadata = project_file_reader.read(file)
+            file_info = project_file_reader.read(file)
         except UnhandledFileTypeError:
             logger.debug("Ignoring %s", file)
             continue
@@ -200,39 +202,44 @@ def _add_new(
             logger.exception("Invalid distribution %s: %s", file, e)
             continue
 
-        conflicts = (f"{i}{file.name}" for i, s in known if s != dist.hashes["sha256"])
+        conflicts = (f"{i}{file.name}" for i, h in known if h != file_info.hash)
         if other := next(conflicts, None):
             logger.error("Conflicting distribution %s: hash conflict with %s", file, other)
             continue
 
         logger.info("Adding %s", file)
+        file_info.dist.url = static_files.add(file, file_info.hash, file_info.metadata)
         parameters = (
             index,
             file.name,
-            dist.hashes["sha256"],
-            project,
-            version,
-            dist,
+            file_info.hash,
+            file_info.project,
+            file_info.version,
+            file_info.dist,
         )
         con.execute(STORE_DIST, parameters)
-        static_files.add(file, dist.url, metadata)
 
 
-def _remove_missing(con: sqlite3.Connection, base_dir: Path, static_files: FilesDir) -> None:
+def _remove_missing(con: sqlite3.Connection, base_dir: Path, static_files: StaticFilesDirGenerator) -> None:
     remove_dist_parameters = []
     files_to_check = []
+
+    filename: str
+    index: str
+    hash: str
     for filename, index, hash in con.execute(LIST_DISTS):
         file = base_dir.joinpath(index.rstrip("/"), filename)
         if not file.exists():
             logger.info("Removing %s", file)
             remove_dist_parameters.append((filename, index))
-            files_to_check.append((files_url(filename, hash), filename))
+            files_to_check.append((filename, hash))
 
     con.executemany(REMOVE_DIST, remove_dist_parameters)
 
-    for dist_url, filename in files_to_check:
+    for filename, hash in files_to_check:
         if index_hash := con.execute(CHECK_DIST, (filename,)).fetchone():
+            # use file from other index
             file = base_dir.joinpath(index_hash[0].rstrip("/"), filename)
-            static_files.update_link(dist_url, file)
+            static_files.update_link(file, hash)
         else:
-            static_files.remove(dist_url)
+            static_files.remove(static_files.url_path(filename, hash))

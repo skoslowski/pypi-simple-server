@@ -20,6 +20,10 @@ class Meta(Struct, frozen=True, rename="kebab"):
     api_version: str = "1.1"  # PEP-700
 
 
+class Hashes(Struct):
+    sha256: str
+
+
 class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     # PEP-503
     filename: str
@@ -28,7 +32,7 @@ class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     # PEP-503
     url: str  # HttpUrl
     # Limited to a len() of 1 in HTML
-    hashes: dict[str, str]
+    hashes: Hashes  # could be empty
     # not used here
     gpg_sig: bool | None = None
     # PEP-503 (updated)
@@ -36,7 +40,7 @@ class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     # PEP-592
     yanked: str | None = None
     # PEP-658, renamed from dist_info_metadata in PEP-714
-    core_metadata: dict[str, str] | None = None
+    core_metadata: Hashes | None = None
 
 
 class ProjectDetail(Struct, kw_only=True):

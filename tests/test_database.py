@@ -9,7 +9,7 @@ from zipfile import ZipFile
 import msgspec
 import pytest
 
-from pypi_simple_server.database import Database, FilesDir, Stats
+from pypi_simple_server.database import Database, StaticFilesDirGenerator, Stats
 from pypi_simple_server.dist_scanner import ProjectFileReader
 
 
@@ -17,7 +17,7 @@ from pypi_simple_server.dist_scanner import ProjectFileReader
 class Context:
     database: Database
     reader: ProjectFileReader
-    files: FilesDir
+    files: StaticFilesDirGenerator
 
     def update(self) -> Stats:
         asyncio.run(self.database.update(self.reader, self.files))
@@ -38,7 +38,7 @@ class Context:
 def context(file_path: Path, tmp_path: Path) -> Iterator[Context]:
     shutil.copytree(file_path, tmp_path, dirs_exist_ok=True)
 
-    files = FilesDir(tmp_path / "files")
+    files = StaticFilesDirGenerator(tmp_path / "files")
     reader = ProjectFileReader(tmp_path, ignore_dirs={files.directory})
 
     db_file = tmp_path / ".cache.sqlite"

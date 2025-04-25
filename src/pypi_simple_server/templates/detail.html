@@ -8,10 +8,10 @@
 <body>
     <h1>Links for {{ model.name }}</h1>
     {%- for file in model.files %}
-    <a href="{{ file.url}}#{{ file.hashes | items | first | join('=') }}"
+    <a href="{{ file.url}}#sha256={{ file.hashes.sha256 }}"
         {%- if file.requires_python %} data-requires-python="{{ file.requires_python }}"{% endif -%}
         {%- if file.yanked %} data-yanked="{{ file.yanked }}"{% endif -%}
-        {%- if file.core_metadata %} data-core_metadata="{{ file.core_metadata  | items | first | join('=') }}"{% endif -%}
+        {%- if file.core_metadata %} data-core_metadata="sha256={{ file.core_metadata.sha256 }}"{% endif -%}
     >{{ file.filename }}</a><br />
     {%- endfor %}
 </body>

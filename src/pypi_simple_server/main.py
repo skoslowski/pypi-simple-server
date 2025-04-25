@@ -18,11 +18,11 @@ from .config import BASE_DIR, CACHE_FILE, FILES_DIR
 from .database import Database
 from .dist_scanner import FileWatcher, ProjectFileReader
 from .endpoint_utils import ResponseHeaders, get_response, handle_conditional_request
-from .files_dir import FilesDir
+from .static_files_gen import StaticFilesDirGenerator
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
-files_dir = FilesDir(directory=FILES_DIR)
+static_files = StaticFilesDirGenerator(directory=FILES_DIR)
 response_headers = ResponseHeaders(
     {
         "Cache-Control": "max-age=600, public",
@@ -90,7 +90,7 @@ async def lifespan(app: Starlette):
     await _handle_file_change({CACHE_FILE, BASE_DIR})
     watch = FileWatcher(BASE_DIR, _handle_file_change)
     watch.ignore = {
-        files_dir.directory,
+        static_files.directory,
         CACHE_FILE.with_name(CACHE_FILE.name + "-journal"),
     }
     with database:
@@ -101,8 +101,8 @@ async def _handle_file_change(files: set[Path]) -> None:
     if files and files != {CACHE_FILE}:
         logger.info("Updating database")
         with replace(database, read_only=False) as db:
-            reader = ProjectFileReader(BASE_DIR, ignore_dirs={files_dir.directory})
-            await db.update(reader, files_dir)
+            reader = ProjectFileReader(BASE_DIR, ignore_dirs={static_files.directory})
+            await db.update(reader, static_files)
         logger.info("Completed database update")
 
     if CACHE_FILE in files:
@@ -117,7 +117,7 @@ routes = [
     Route("/simple/{project}/", endpoint=detail),
     Route("/{index:path}/simple/", endpoint=index),
     Route("/{index:path}/simple/{project}/", endpoint=detail),
-    Mount("/files", StaticFiles(directory=files_dir.directory, follow_symlink=True), name="files"),
+    Mount("/files", StaticFiles(directory=static_files.directory, follow_symlink=True), name="files"),
 ]
 
 app = Starlette(routes=routes, lifespan=lifespan)

@@ -19,7 +19,7 @@ from packaging.utils import (
     parse_wheel_filename,
 )
 
-from .models import ProjectFile
+from .models import Hashes, ProjectFile
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +58,21 @@ def read_project_metadata(file: Path) -> bytes:
     raise UnhandledFileTypeError(f"Can't handle type {file.name}")
 
 
-def _get_file_hashes(filename: Path, blocksize: int = 2 << 13) -> dict[str, str]:
+def _get_file_hashes(filename: Path, blocksize: int = 2 << 13) -> Hashes:
     hash_obj = hashlib.sha256()
     with open(filename, "rb") as fp:
         while fb := fp.read(blocksize):
             hash_obj.update(fb)
-    return {hash_obj.name: hash_obj.hexdigest()}
+    return Hashes(sha256=hash_obj.hexdigest())
+
+
+@dataclass(frozen=True, slots=True)
+class FileResult:
+    project: NormalizedName
+    version: str
+    hash: str
+    dist: ProjectFile
+    metadata: bytes
 
 
 @dataclass
@@ -81,11 +90,11 @@ class ProjectFileReader:
             for file in files:
                 yield index, root_dir / file
 
-    def read(self, file: Path) -> tuple[NormalizedName, str, ProjectFile, bytes]:
+    def read(self, file: Path) -> FileResult:
         try:
             metadata_content = read_project_metadata(file)
             metadata, _ = parse_email(metadata_content)
-            name = canonicalize_name(metadata["name"])  # type: ignore
+            project = canonicalize_name(metadata["name"])  # type: ignore
             version = canonicalize_version(metadata["version"])  # type: ignore
         except ProjectReaderError:
             raise
@@ -97,16 +106,12 @@ class ProjectFileReader:
         dist = ProjectFile(
             filename=file.name,
             size=file.stat().st_size,
-            url=files_url(file.name, hashes["sha256"]),
+            url="",  # filled later
             hashes=hashes,
             requires_python=metadata.get("requires_python"),
-            core_metadata={"sha256": hashlib.sha256(metadata_content).hexdigest()},
+            core_metadata=Hashes(sha256=hashlib.sha256(metadata_content).hexdigest()),
         )
-        return name, version, dist, metadata_content
-
-
-def files_url(filename: str, sha256: str) -> str:
-    return f"{sha256[:2]}/{filename}"
+        return FileResult(project, version, hashes.sha256, dist, metadata_content)
 
 
 @dataclass
