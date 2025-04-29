@@ -4,6 +4,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import KW_ONLY, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Self
 
@@ -36,9 +37,8 @@ GET_STATS = """
 """
 
 GET_STATS_PER_INDEX = """
-    SELECT "index", COUNT(*) as distributions, COUNT(DISTINCT project) as projects
+    SELECT "index", "project", "file" AS "file [ProjectFile]"
     FROM Distribution
-    GROUP BY "index"
 """
 
 GET_PROJECT_LIST = """
@@ -85,6 +85,20 @@ class Stats(msgspec.Struct, frozen=True):
     distributions: int
     projects: int
     indexes: int
+
+
+class IndexStats(msgspec.Struct, frozen=True):
+    projects: int
+    files: int
+    total_size: int
+    last_modified: datetime
+
+
+class _StatsPerIndexCollector(msgspec.Struct):
+    projects: set[str] = set()
+    files: set[str] = set()
+    size: int = 0
+    mtime: float = 0
 
 
 @dataclass
@@ -140,11 +154,29 @@ class Database:
         with self._get_connection() as con:
             return Stats(*con.execute(GET_STATS).fetchone())
 
-    def stats_per_index(self):
+    def stats_per_index(self) -> dict[str, IndexStats]:
         with self._get_connection() as con:
-            cursor = con.execute(GET_STATS_PER_INDEX)
-            fields = [column[0] for column in cursor.description]
-            return [{key: value for key, value in zip(fields, row)} for row in cursor]
+            per_index = dict[str, _StatsPerIndexCollector]()
+            dist: ProjectFile
+            for index, project, dist in con.execute(GET_STATS_PER_INDEX).fetchall():
+                mtime = datetime.fromisoformat(dist.upload_time).timestamp() if dist.upload_time else 0
+                while index:
+                    index = index.rpartition("/")[0]
+                    stats = per_index.setdefault(index, _StatsPerIndexCollector())
+                    stats.projects.add(project)
+                    stats.files.add(dist.filename)
+                    stats.size += dist.size
+                    stats.mtime = max(stats.mtime, mtime)
+
+            return {
+                name: IndexStats(
+                    projects=len(stats.projects),
+                    files=len(stats.files),
+                    total_size=stats.size,
+                    last_modified=datetime.fromtimestamp(stats.mtime),
+                )
+                for name, stats in sorted(per_index.items())
+            }
 
     async def update(
         self, project_file_reader: ProjectFileReader, static_files: StaticFilesDirGenerator

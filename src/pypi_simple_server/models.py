@@ -8,7 +8,7 @@ from typing import Annotated
 
 from msgspec import Meta as M
 from msgspec import Struct
-from packaging.utils import NormalizedName
+from packaging.utils import NormalizedName, Version
 
 # https://peps.python.org/pep-0508/#names
 ProjectName = Annotated[str, M(pattern=r"^([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9])$")]
@@ -43,6 +43,13 @@ class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     core_metadata: Hashes | None = None
     # PEP-700
     upload_time: str | None = None
+
+    @property
+    def version(self) -> Version:
+        try:
+            return Version(self.filename.split("-", 3)[1].removesuffix(".tar.gz"))
+        except Exception:
+            return Version("?")
 
 
 class ProjectDetail(Struct, kw_only=True):

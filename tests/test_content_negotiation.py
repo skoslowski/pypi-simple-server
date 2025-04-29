@@ -4,9 +4,9 @@ from starlette.exceptions import HTTPException
 from pypi_simple_server.endpoint_utils import MediaType, get_response_media_type
 
 CASES = [
-    (MediaType.HTML_V1, "*/*"),
-    (MediaType.HTML_V1, "text/*"),
-    (MediaType.HTML_V1, "text/html"),
+    (MediaType.HTML_TEXT, "*/*"),
+    (MediaType.HTML_TEXT, "text/*"),
+    (MediaType.HTML_TEXT, "text/html"),
     (None, "text/plain"),
     (MediaType.HTML_V1, MediaType.HTML_V1),
     (MediaType.HTML_V1, MediaType.HTML_LATEST),

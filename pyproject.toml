@@ -7,6 +7,7 @@ authors = [
   {name = "Sebastian Koslowski", email = "s.koslowski@procitec.de"},
 ]
 dependencies = [
+  "humanize>=4.12.2",
   "jinja2>=3.1.5",
   "msgspec>=0.19.0",
   "packaging>=24.2",

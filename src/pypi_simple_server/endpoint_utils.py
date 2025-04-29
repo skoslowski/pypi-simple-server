@@ -3,7 +3,6 @@ from email.utils import formatdate, parsedate
 from enum import StrEnum
 from functools import lru_cache
 from hashlib import md5
-from pathlib import Path
 
 import msgspec
 from starlette.datastructures import Headers, MutableHeaders
@@ -15,14 +14,15 @@ from starlette.status import (
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_412_PRECONDITION_FAILED,
 )
-from starlette.templating import Jinja2Templates
 
-templates = Jinja2Templates(Path(__file__).with_name("templates"))
+from .templates import TemplateResponse
 
 
 class MediaType(StrEnum):
     JSON_V1 = "application/vnd.pypi.simple.v1+json"
     HTML_V1 = "application/vnd.pypi.simple.v1+html"
+
+    HTML_TEXT = "text/html"
 
     JSON_LATEST = "application/vnd.pypi.simple.latest+json"
     HTML_LATEST = "application/vnd.pypi.simple.latest+html"
@@ -33,9 +33,9 @@ _ACCEPTABLE: dict[str, MediaType] = {
     MediaType.JSON_V1: MediaType.JSON_V1,
     MediaType.HTML_LATEST: MediaType.HTML_V1,
     MediaType.HTML_V1: MediaType.HTML_V1,
-    "text/html": MediaType.HTML_V1,
-    "text/*": MediaType.HTML_V1,
-    "*/*": MediaType.HTML_V1,
+    MediaType.HTML_TEXT: MediaType.HTML_TEXT,
+    "text/*": MediaType.HTML_TEXT,
+    "*/*": MediaType.HTML_TEXT,
 }
 
 
@@ -99,17 +99,16 @@ def get_response(
     template: str,
 ) -> Response:
     media_type = get_response_media_type(request.headers.get("accept"))
-    if media_type == MediaType.HTML_V1:
-        return templates.TemplateResponse(
+    if media_type.endswith("html"):
+        return TemplateResponse(
             request,
             template,
             context={"model": model},
             headers=headers,
-            media_type=MediaType.HTML_V1,
+            media_type=media_type,
         )
-    else:
-        return Response(
-            msgspec.json.encode(model),
-            headers=headers,
-            media_type=MediaType.JSON_V1,
-        )
+    return Response(
+        msgspec.json.encode(model),
+        headers=headers,
+        media_type=MediaType.JSON_V1,
+    )

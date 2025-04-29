@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <link rel="stylesheet" href="{{ picocss_url }}">
+    <title>Project {{ project.name }}</title>
+    <style>
+        .detail {
+            color: var(--pico-muted-color);
+            font-size: smaller;
+            font-weight: normal;
+        }
+    </style>
+</head>
+
+<body class="container">
+    <header style="padding: 0px;">
+        <nav aria-label="breadcrumb">
+            <ul>
+                <li><a href="{{ root.href }}">PyPI Server</a></li>
+                {% if index.name %}<li><a href="{{ index.href }}">{{ index.name }}</a></li>{% endif %}
+                <li>{{ project.name }}</li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h2>Project {{ project.name }}</h2>
+        <p>
+            {{ project.versions | count }} versions &#128313;
+            {{ project.files | count }} files &#128313;
+            {{ project.files | sum("size") | naturalsize }} &#128313;
+            <a href="https://pypi.org/project/{{ project.name }}">pypi.org</a>
+        </p>
+        {%- for version, files in project.files | groupby("version") | reverse %}
+        <h4>Version {{version}}</h4>
+        <ul>
+            {%- for file in files %}
+            <li><a href="{{ file.url }}">{{ file.filename }}</a>
+                <span class="detail">(
+                    {{ file.size | naturalsize }},
+                    <span data-tooltip="{{ file.upload_time }}">{{ file.upload_time | fromisoformat | naturaltime}}</span>,
+                    <span data-tooltip="SHA256: {{ file.hashes.sha256 }}">{{ file.hashes.sha256[:10] }}</span>
+                )</span>
+            </li>
+            {%- endfor %}
+        </ul>
+        {%- endfor %}
+    </main>
+</body>
+
+</html>

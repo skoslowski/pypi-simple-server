@@ -11,12 +11,16 @@ from pypi_simple_server.endpoint_utils import MediaType
 def test_content_type(client: TestClient, content_type: str):
     headers = {"Accept": content_type} if content_type else {}
     response = client.head("/simple/", headers=headers)
-    assert response.headers.get("content-type") == MediaType.HTML_V1
+    assert (
+        response.headers.get("content-type") == MediaType.HTML_V1
+        if content_type.startswith("application")
+        else MediaType.HTML_TEXT
+    )
     assert response.status_code == HTTP_200_OK
 
 
 def test_root_index_html(client: TestClient):
-    response = client.get("/simple/")
+    response = client.get("/simple/", headers={"Accept": MediaType.HTML_V1})
     assert response.status_code == HTTP_200_OK
     expected = """
         <!DOCTYPE html>
@@ -38,7 +42,7 @@ def test_root_index_html(client: TestClient):
 
 
 def test_root_project_pytest_html(client: TestClient):
-    response = client.get("/simple/pytest/")
+    response = client.get("/simple/pytest/", headers={"Accept": MediaType.HTML_V1})
     assert response.status_code == HTTP_200_OK
     expected = """
         <!DOCTYPE html>
@@ -49,10 +53,9 @@ def test_root_project_pytest_html(client: TestClient):
             <title>Links for pytest</title>
         </head>
         <body>
-            <h1>Links for pytest</h1>
-            <a href="http://testserver/pypi/files/a1/pytest-8.3.0-py3-none-any.whl#sha256=a1b30492f2676b476266a87f6551345fb25c0484fb6d09c86aa2eb07b5f71c2f" data-requires-python="&gt;=3.8" data-core_metadata="sha256=cdd29a47b9142b3a3d662c4fa4870139d0c213d3f3853406efc90775b09d06af">pytest-8.3.0-py3-none-any.whl</a><br />
-            <a href="http://testserver/pypi/files/50/pytest-8.3.4-py3-none-any.whl#sha256=50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6" data-requires-python="&gt;=3.8" data-core_metadata="sha256=7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28">pytest-8.3.4-py3-none-any.whl</a><br />
-            <a href="http://testserver/pypi/files/96/pytest-8.3.4.tar.gz#sha256=965370d062bce11e73868e0335abac31b4d3de0e82f4007408d242b4f8610761" data-requires-python="&gt;=3.8" data-core_metadata="sha256=7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28">pytest-8.3.4.tar.gz</a><br />
+            <a href="http://testserver/pypi/files/a1/pytest-8.3.0-py3-none-any.whl#sha256=a1b30492f2676b476266a87f6551345fb25c0484fb6d09c86aa2eb07b5f71c2f" data-requires-python="&gt;=3.8" data-core_metadata="sha256=cdd29a47b9142b3a3d662c4fa4870139d0c213d3f3853406efc90775b09d06af">pytest-8.3.0-py3-none-any.whl</a>
+            <a href="http://testserver/pypi/files/50/pytest-8.3.4-py3-none-any.whl#sha256=50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6" data-requires-python="&gt;=3.8" data-core_metadata="sha256=7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28">pytest-8.3.4-py3-none-any.whl</a>
+            <a href="http://testserver/pypi/files/96/pytest-8.3.4.tar.gz#sha256=965370d062bce11e73868e0335abac31b4d3de0e82f4007408d242b4f8610761" data-requires-python="&gt;=3.8" data-core_metadata="sha256=7f9bf63bf3c20dd4fc7552a8b4708b887cd728c4d2f614ced98b0a43afcfde28">pytest-8.3.4.tar.gz</a>
         </body>
         </html>
     """

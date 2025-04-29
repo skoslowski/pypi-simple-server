@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <link rel="stylesheet" href="{{ picocss_url }}">
+    <title>PyPI Server</title>
+    <style>
+        .index-table th, td {
+            text-align: right;
+            border-bottom: none;
+        }
+        .index-table th:first-child, td:first-child {
+            text-align: left;
+        }
+        .index-table td[data-tooltip] {
+            border-bottom: none !important;
+        }
+    </style>
+</head>
+
+<body class="container">
+    <header style="padding: 0px;">
+        <nav aria-label="breadcrumb">
+            <ul>
+                {%- if not index.name %}
+                <li>PyPI Server</li>
+                {%- else %}
+                <li><a href="{{ root.href }}">PyPI Server</a></li>
+                <li>{{ index.name }}</li>
+                {%- endif %}
+            </ul>
+        </nav>
+    </header>
+    <main>
+        {%- if not index.name %}
+        <h2>Indexes</h2>
+        <table class="index-table">
+            <thead>
+                <tr>
+                    <th scope="col">Index</th>
+                    <th scope="col">Projects</th>
+                    <th scope="col">Files</th>
+                    <th scope="col">Total size</th>
+                    <th scope="col">Last modified</th>
+                </tr>
+            </thead>
+            <tbody>
+                {%- for name, stats in stats_per_index.items() %}
+                <tr>
+                    <th scope="row">{%if name %}<a href="{{ name }}/">{{ name }}</a>{% else %}(root){% endif %}</th>
+                    <td>{{ stats.projects }}</td>
+                    <td>{{ stats.files }}</td>
+                    <td data-tooltip="{{ stats.total_size }} bytes">{{ stats.total_size | naturalsize }}</td>
+                    <td data-tooltip="{{ stats.last_modified }}">{{ stats.last_modified | naturaltime }}</td>
+                </tr>
+                {%- endfor %}
+            </tbody>
+        </table>
+        {%- endif %}
+        <h2>Projects{% if index.name %} for {{ index.name }}{% endif %}</h2>
+        <p>
+            {{ index.stats.projects }} projects &#128313;
+            {{ index.stats.files }} files &#128313;
+            {{ index.stats.total_size | naturalsize }}
+        </p>
+        <ul>
+            {%- for project in index.projects %}
+            <li><a href="project/{{ project.name }}/">{{ project.name }}</a></li>
+            {%- endfor %}
+        </li>
+    </main>
+    <footer>
+        <p>Usage:</p>
+        <pre style="padding:20px;">uv CMD --default-index={{ index.simple_api }} --native-tls</pre>
+    </footer>
+</body>
+
+</html>

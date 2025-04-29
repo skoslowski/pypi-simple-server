@@ -6,13 +6,12 @@
     <title>Links for {{ model.name }}</title>
 </head>
 <body>
-    <h1>Links for {{ model.name }}</h1>
     {%- for file in model.files %}
     <a href="{{ file.url}}#sha256={{ file.hashes.sha256 }}"
         {%- if file.requires_python %} data-requires-python="{{ file.requires_python }}"{% endif -%}
         {%- if file.yanked %} data-yanked="{{ file.yanked }}"{% endif -%}
         {%- if file.core_metadata %} data-core_metadata="sha256={{ file.core_metadata.sha256 }}"{% endif -%}
-    >{{ file.filename }}</a><br />
+    >{{ file.filename }}</a>
     {%- endfor %}
 </body>
 </html>
