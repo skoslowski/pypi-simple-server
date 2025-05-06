@@ -133,26 +133,25 @@ class FileWatcher:
         self._next_callback_time: float | None = None
         self._files_changed: set[Path] = set()
         self._watch_task = asyncio.create_task(self._run_watch())
-        self._callback_task = asyncio.create_task(self._run_callback())
 
     async def _run_watch(self) -> None:
         async for changes in watchfiles.awatch(self.watch_dir.absolute(), watch_filter=self._watch_filter):
             if not self._next_callback_time:
                 logger.info("File watch detected changes (quiet time %ss)", self.quiet_time)
+                asyncio.create_task(self._run_callback())
             self._next_callback_time = time() + self.quiet_time
-            self._files_changed.union(Path(s) for c, s in changes)
+            self._files_changed.update(Path(s) for c, s in changes)
 
     def _watch_filter(self, change: watchfiles.Change, file: str) -> bool:
         return self.ignore.isdisjoint(Path(file).parents)
 
     async def _run_callback(self) -> None:
-        while True:
-            if not self._next_callback_time or time() < self._next_callback_time:
-                await asyncio.sleep(10)
+        try:
+            while not self._next_callback_time or time() < self._next_callback_time:
+                await asyncio.sleep(1)
                 continue
 
             files_changed = set(self._files_changed)
-            self._next_callback_time = None
             self._files_changed.clear()
 
             logger.info("File watch reporting %d changed files", len(files_changed))
@@ -160,3 +159,5 @@ class FileWatcher:
                 await self.callback(files_changed)
             except Exception as e:
                 logger.exception("File watch callback failed: %s", e)
+        finally:
+            self._next_callback_time = None
