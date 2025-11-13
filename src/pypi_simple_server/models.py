@@ -34,7 +34,7 @@ class ProjectFile(Struct, omit_defaults=True, rename="kebab"):
     # Limited to a len() of 1 in HTML
     hashes: Hashes  # could be empty
     # not used here
-    gpg_sig: bool | None = None
+    # gpg_sig: bool | None = None
     # PEP-503 (updated)
     requires_python: str | None = None
     # PEP-592

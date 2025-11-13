@@ -43,8 +43,8 @@
                     <th scope="col">Index</th>
                     <th scope="col">Projects</th>
                     <th scope="col">Files</th>
-                    <th scope="col">Total size</th>
-                    <th scope="col">Last modified</th>
+                    <th scope="col">Total Size</th>
+                    <th scope="col">Latest Upload</th>
                 </tr>
             </thead>
             <tbody>
@@ -54,7 +54,7 @@
                     <td>{{ stats.projects }}</td>
                     <td>{{ stats.files }}</td>
                     <td data-tooltip="{{ stats.total_size }} bytes">{{ stats.total_size | naturalsize }}</td>
-                    <td data-tooltip="{{ stats.last_modified }}">{{ stats.last_modified | naturaltime }}</td>
+                    <td data-tooltip="{{ stats.latest_upload }}">{{ stats.latest_upload | naturaltime }}</td>
                 </tr>
                 {%- endfor %}
             </tbody>
@@ -64,7 +64,8 @@
         <p>
             {{ index.stats.projects }} projects &#128313;
             {{ index.stats.files }} files &#128313;
-            {{ index.stats.total_size | naturalsize }}
+            {{ index.stats.total_size | naturalsize }} &#128313;
+            <span data-tooltip="Latest upload: {{ index.stats.latest_upload }}">{{ index.stats.latest_upload | naturaltime }}</span>
         </p>
         <ul>
             {%- for project in index.projects %}

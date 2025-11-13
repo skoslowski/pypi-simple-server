@@ -5,7 +5,9 @@ import humanize
 from starlette.templating import Jinja2Templates
 
 
-def fromisoformat(date_string: str) -> datetime:
+def fromisoformat(date_string: str | None) -> datetime | None:
+    if not date_string:
+        return None
     dt = datetime.fromisoformat(date_string)
     return dt.astimezone()
 

@@ -15,7 +15,6 @@
         }
     </style>
 </head>
-
 <body class="container">
     <header style="padding: 0px;">
         <nav aria-label="breadcrumb">
@@ -31,6 +30,8 @@
         <p>
             {{ project.versions | count }} versions &#128313;
             {{ project.files | count }} files &#128313;
+            {% set latest_file = project.files | rejectattr("upload_time", "none") | max(attribute="upload_time") %}
+            <span data-tooltip="Latest upload: {{ latest_file.upload_time }}">{{ latest_file.upload_time | fromisoformat | naturaltime }}</span> &#128313;
             {{ project.files | sum("size") | naturalsize }} &#128313;
             <a href="https://pypi.org/project/{{ project.name }}">pypi.org</a>
         </p>
@@ -41,7 +42,7 @@
             <li><a href="{{ file.url }}">{{ file.filename }}</a>
                 <span class="detail">(
                     {{ file.size | naturalsize }},
-                    <span data-tooltip="{{ file.upload_time }}">{{ file.upload_time | fromisoformat | naturaltime}}</span>,
+                    <span data-tooltip="Uploaded: {{ file.upload_time }}">{{ file.upload_time | fromisoformat | naturaltime }}</span>,
                     <span data-tooltip="SHA256: {{ file.hashes.sha256 }}">{{ file.hashes.sha256[:10] }}</span>
                 )</span>
             </li>

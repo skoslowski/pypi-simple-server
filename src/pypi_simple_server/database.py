@@ -91,7 +91,7 @@ class IndexStats(msgspec.Struct, frozen=True):
     projects: int
     files: int
     total_size: int
-    last_modified: datetime
+    latest_upload: datetime
 
 
 class _StatsPerIndexCollector(msgspec.Struct):
@@ -173,7 +173,7 @@ class Database:
                     projects=len(stats.projects),
                     files=len(stats.files),
                     total_size=stats.size,
-                    last_modified=datetime.fromtimestamp(stats.mtime),
+                    latest_upload=datetime.fromtimestamp(stats.mtime),
                 )
                 for name, stats in sorted(per_index.items())
             }
