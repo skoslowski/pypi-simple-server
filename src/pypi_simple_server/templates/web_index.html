@@ -8,6 +8,11 @@
     <link rel="stylesheet" href="{{ picocss_url }}">
     <title>PyPI Server</title>
     <style>
+        :root {
+            --pico-form-element-spacing-vertical: 0.35rem;
+            --pico-form-element-spacing-horizontal: 0.75rem;
+            --pico-font-size: 1rem;
+        }
         .index-table th, td {
             text-align: right;
             border-bottom: none;
@@ -18,23 +23,24 @@
         .index-table td[data-tooltip] {
             border-bottom: none !important;
         }
+        .myheader {
+            padding: 0px;
+            background-color: var(--pico-card-background-color);
+        }
     </style>
 </head>
 
-<body class="container">
-    <header style="padding: 0px;">
-        <nav aria-label="breadcrumb">
+<body>
+    <header class="myheader">
+        <nav class="container" aria-label="breadcrumb">
+            <span style="font-weight: 800; font-size: x-large;">PyPI Server</span>
             <ul>
-                {%- if not index.name %}
-                <li>PyPI Server</li>
-                {%- else %}
-                <li><a href="{{ root.href }}">PyPI Server</a></li>
-                <li>{{ index.name }}</li>
-                {%- endif %}
+                <li><a style="margin-left:10px;" href="{{ root.href }}">/</a></li>
+                {% if index.name %}<li><a href="{{ index.href }}">{{ index.name }}</a></li>{% endif %}
             </ul>
         </nav>
     </header>
-    <main>
+    <main class="container">
         {%- if not index.name %}
         <h2>Indexes</h2>
         <table class="index-table">
@@ -73,7 +79,7 @@
             {%- endfor %}
         </li>
     </main>
-    <footer>
+    <footer class="container">
         <p>Usage:</p>
         <pre style="padding:20px;">uv CMD --default-index={{ index.simple_api }} --native-tls</pre>
     </footer>

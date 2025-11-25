@@ -8,24 +8,34 @@
     <link rel="stylesheet" href="{{ picocss_url }}">
     <title>Project {{ project.name }}</title>
     <style>
+        :root {
+            --pico-form-element-spacing-vertical: 0.35rem;
+            --pico-form-element-spacing-horizontal: 0.75rem;
+            --pico-font-size: 1rem;
+        }
         .detail {
             color: var(--pico-muted-color);
             font-size: smaller;
             font-weight: normal;
         }
+        .myheader {
+            padding: 0px;
+            background-color: var(--pico-card-background-color);
+        }
     </style>
 </head>
-<body class="container">
-    <header style="padding: 0px;">
-        <nav aria-label="breadcrumb">
+<body>
+    <header class="myheader">
+        <nav class="container" aria-label="breadcrumb">
+            <span style="font-weight: 800; font-size: x-large;">PyPI Server</span>
             <ul>
-                <li><a href="{{ root.href }}">PyPI Server</a></li>
+                <li><a style="margin-left:10px;" href="{{ root.href }}">/</a></li>
                 {% if index.name %}<li><a href="{{ index.href }}">{{ index.name }}</a></li>{% endif %}
                 <li>{{ project.name }}</li>
             </ul>
         </nav>
     </header>
-    <main>
+    <main class="container">
         <h2>Project {{ project.name }}</h2>
         <p>
             {{ project.versions | count }} versions &#128313;
