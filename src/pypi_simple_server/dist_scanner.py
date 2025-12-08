@@ -143,7 +143,8 @@ class FileWatcher:
             self._files_changed.update(Path(s) for c, s in changes)
 
     def _watch_filter(self, change: watchfiles.Change, file: str) -> bool:
-        return self.ignore.isdisjoint(Path(file).parents)
+        filepath = Path(file)
+        return filepath not in self.ignore and self.ignore.isdisjoint(filepath.parents)
 
     async def _run_callback(self) -> None:
         try:
