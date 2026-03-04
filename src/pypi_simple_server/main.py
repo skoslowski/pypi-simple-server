@@ -18,6 +18,7 @@ from .dist_scanner import FileWatcher, ProjectFileReader
 from .endpoint_utils import ResponseHeaders, get_response, handle_conditional_request
 from .static_files_gen import StaticFilesDirGenerator
 from .templates import TemplateResponse
+from .uploader import legacy_upload
 
 logger = logging.getLogger(__name__)
 database = Database(CACHE_FILE)
@@ -135,6 +136,7 @@ async def lifespan(app: Starlette):
         static_files.directory,
         CACHE_FILE.with_name(CACHE_FILE.name + "-journal"),
     }
+    watch.ignore_globs = ["*.part"]
     with database:
         yield
 
@@ -163,6 +165,8 @@ routes = [
     Route("/project/{project}/", endpoint=web_project),
     Route("/{index:path}/project/{project}/", endpoint=web_project),
     Route("/{index:path}/", endpoint=web_index, name="web_index"),
+    # upload
+    Route("/legacy/", endpoint=legacy_upload, methods=["POST"]),
     # files
     Mount("/files", StaticFiles(directory=static_files.directory, follow_symlink=True), name="files"),
     # internal

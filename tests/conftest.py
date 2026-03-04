@@ -1,3 +1,4 @@
+import base64
 import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -7,6 +8,8 @@ from unittest import mock
 import pytest
 from pypi_simple import PyPISimple
 from starlette.testclient import TestClient
+
+from pypi_simple_server.auth import create_jwt
 
 FILES_REQUIRED = [
     "pytest-8.3.4-py3-none-any.whl",
@@ -21,6 +24,32 @@ FILES_REQUIRED = [
     "ext/pluggy-1.5.0-py3-none-any.whl",
     "ext/pluggy-1.5.0.tar.gz",
 ]
+JWT_SECRET = "upload-secret-0123456789abcdef01"
+
+
+class AppClient(TestClient):
+    upload_jwt_secret: str
+
+    def make_upload_auth(
+        self,
+        *,
+        scope: list[str],
+        sub: str = "ci",
+        expires_in: int | None = None,
+        expired: bool = False,
+        max_upload_size: int | None = None,
+    ) -> str:
+        if expired:
+            expires_in = -300
+        token = create_jwt(
+            user=sub,
+            scope=scope,
+            secret=self.upload_jwt_secret,
+            expires_in=expires_in,
+            max_upload_size=max_upload_size,
+        )
+        raw = f"__token__:{token}".encode()
+        return f"Basic {base64.b64encode(raw).decode()}"
 
 
 @pytest.fixture(scope="session")
@@ -34,7 +63,7 @@ def downloads() -> Path:
         project = file.name.partition("-")[0]
         files_missing.setdefault(project, []).append(download_dir / file)
     if files_missing:
-        download(files_missing)
+        _download(files_missing)
 
     ts = datetime(1111, 11, 11, 11, 11, 11, tzinfo=UTC).timestamp()
     for entry in FILES_REQUIRED:
@@ -46,7 +75,7 @@ def downloads() -> Path:
     return download_dir
 
 
-def download(files_missing: dict[str, list[Path]]) -> None:
+def _download(files_missing: dict[str, list[Path]]) -> None:
     with PyPISimple() as client:
         for project, files in files_missing.items():
             page = client.get_project_page(project)
@@ -59,11 +88,15 @@ def download(files_missing: dict[str, list[Path]]) -> None:
 
 
 @pytest.fixture(scope="session")
-def client(downloads: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
-    from pypi_simple_server import config
+def client(downloads: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[AppClient]:
+    from pypi_simple_server import auth, config
 
-    with mock.patch.object(config, "CACHE_FILE", tmp_path_factory.mktemp("cache") / "db.sqlite"):
+    with (
+        mock.patch.object(config, "CACHE_FILE", tmp_path_factory.mktemp("cache") / "db.sqlite"),
+        mock.patch.object(auth.config, "UPLOAD_JWT_SECRET", JWT_SECRET),
+    ):
         from pypi_simple_server.main import app
 
-        with TestClient(app, root_path="/pypi") as client:
+        with AppClient(app, root_path="/pypi") as client:
+            client.upload_jwt_secret = JWT_SECRET
             yield client

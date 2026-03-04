@@ -5,6 +5,7 @@ import os
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import KW_ONLY, dataclass, field
 from datetime import UTC, datetime
+from fnmatch import fnmatch
 from pathlib import Path
 from tarfile import TarFile
 from time import time
@@ -127,6 +128,7 @@ class FileWatcher:
     callback: Callable[[set[Path]], Awaitable[None]]
     _: KW_ONLY
     ignore: set[Path] = field(default_factory=set)
+    ignore_globs: list[str] = field(default_factory=list)
     quiet_time: int = 10
 
     def __post_init__(self) -> None:
@@ -144,7 +146,11 @@ class FileWatcher:
 
     def _watch_filter(self, change: watchfiles.Change, file: str) -> bool:
         filepath = Path(file)
-        return filepath not in self.ignore and self.ignore.isdisjoint(filepath.parents)
+        if filepath in self.ignore or not self.ignore.isdisjoint(filepath.parents):
+            return False
+        if any(fnmatch(file, pattern) for pattern in self.ignore_globs):
+            return False
+        return True
 
     async def _run_callback(self) -> None:
         try:
