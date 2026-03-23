@@ -27,6 +27,9 @@
             padding: 0px;
             background-color: var(--pico-card-background-color);
         }
+        time[data-naturaltime] {
+            white-space: nowrap;
+        }
     </style>
 </head>
 
@@ -60,7 +63,9 @@
                     <td>{{ stats.projects }}</td>
                     <td>{{ stats.files }}</td>
                     <td data-tooltip="{{ stats.total_size }} bytes">{{ stats.total_size | naturalsize }}</td>
-                    <td data-tooltip="{{ stats.latest_upload }}">{{ stats.latest_upload | naturaltime }}</td>
+                    <td data-tooltip="{{ stats.latest_upload.isoformat() }}">
+                        <time data-naturaltime datetime="{{ stats.latest_upload.isoformat() }}">{{ stats.latest_upload.isoformat() }}</time>
+                    </td>
                 </tr>
                 {%- endfor %}
             </tbody>
@@ -71,7 +76,7 @@
             {{ index.stats.projects }} projects &#128313;
             {{ index.stats.files }} files &#128313;
             {{ index.stats.total_size | naturalsize }} &#128313;
-            <span data-tooltip="Latest upload: {{ index.stats.latest_upload }}">{{ index.stats.latest_upload | naturaltime }}</span>
+            <time data-naturaltime data-tooltip="Latest upload: {{ index.stats.latest_upload.isoformat() }}" datetime="{{ index.stats.latest_upload.isoformat() }}">{{ index.stats.latest_upload.isoformat() }}</time>
         </p>
         <ul>
             {%- for project in index.projects %}
@@ -83,6 +88,35 @@
         <p>Usage:</p>
         <pre style="padding:20px;">uv CMD --default-index={{ index.simple_api }} --native-tls</pre>
     </footer>
+    <script>
+        const relativeTimeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+        const relativeTimeUnits = [
+            ["year", 31536000],
+            ["month", 2592000],
+            ["week", 604800],
+            ["day", 86400],
+            ["hour", 3600],
+            ["minute", 60],
+        ];
+
+        for (const element of document.querySelectorAll("time[data-naturaltime]")) {
+            const timestamp = Date.parse(element.dateTime);
+            if (Number.isNaN(timestamp)) continue;
+
+            const diffSeconds = Math.round((timestamp - Date.now()) / 1000);
+            if (Math.abs(diffSeconds) < 60) {
+                element.textContent = "just now";
+                continue;
+            }
+
+            for (const [unit, seconds] of relativeTimeUnits) {
+                if (Math.abs(diffSeconds) >= seconds) {
+                    element.textContent = relativeTimeFormat.format(Math.round(diffSeconds / seconds), unit);
+                    break;
+                }
+            }
+        }
+    </script>
 </body>
 
 </html>

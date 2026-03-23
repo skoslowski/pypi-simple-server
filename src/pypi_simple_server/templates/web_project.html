@@ -22,6 +22,9 @@
             padding: 0px;
             background-color: var(--pico-card-background-color);
         }
+        time[data-naturaltime] {
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -41,7 +44,7 @@
             {{ project.versions | count }} versions &#128313;
             {{ project.files | count }} files &#128313;
             {% set latest_file = project.files | rejectattr("upload_time", "none") | max(attribute="upload_time") %}
-            <span data-tooltip="Latest upload: {{ latest_file.upload_time }}">{{ latest_file.upload_time | fromisoformat | naturaltime }}</span> &#128313;
+            <time data-naturaltime data-tooltip="Latest upload: {{ latest_file.upload_time }}" datetime="{{ latest_file.upload_time }}">{{ latest_file.upload_time }}</time> &#128313;
             {{ project.files | sum("size") | naturalsize }} &#128313;
             <a href="https://pypi.org/project/{{ project.name }}">pypi.org</a>
         </p>
@@ -52,7 +55,7 @@
             <li><a href="{{ file.url }}">{{ file.filename }}</a>
                 <span class="detail">(
                     {{ file.size | naturalsize }},
-                    <span data-tooltip="Uploaded: {{ file.upload_time }}">{{ file.upload_time | fromisoformat | naturaltime }}</span>,
+                    <time data-naturaltime data-tooltip="Uploaded: {{ file.upload_time }}" datetime="{{ file.upload_time }}">{{ file.upload_time }}</time>,
                     <span data-tooltip="SHA256: {{ file.hashes.sha256 }}">{{ file.hashes.sha256[:10] }}</span>
                 )</span>
             </li>
@@ -60,6 +63,35 @@
         </ul>
         {%- endfor %}
     </main>
+    <script>
+        const relativeTimeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+        const relativeTimeUnits = [
+            ["year", 31536000],
+            ["month", 2592000],
+            ["week", 604800],
+            ["day", 86400],
+            ["hour", 3600],
+            ["minute", 60],
+        ];
+
+        for (const element of document.querySelectorAll("time[data-naturaltime]")) {
+            const timestamp = Date.parse(element.dateTime);
+            if (Number.isNaN(timestamp)) continue;
+
+            const diffSeconds = Math.round((timestamp - Date.now()) / 1000);
+            if (Math.abs(diffSeconds) < 60) {
+                element.textContent = "just now";
+                continue;
+            }
+
+            for (const [unit, seconds] of relativeTimeUnits) {
+                if (Math.abs(diffSeconds) >= seconds) {
+                    element.textContent = relativeTimeFormat.format(Math.round(diffSeconds / seconds), unit);
+                    break;
+                }
+            }
+        }
+    </script>
 </body>
 
 </html>
