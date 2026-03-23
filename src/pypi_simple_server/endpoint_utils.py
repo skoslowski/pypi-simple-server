@@ -1,8 +1,10 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from email.utils import formatdate, parsedate
 from enum import StrEnum
 from functools import lru_cache
 from hashlib import md5
+from typing import Self
 
 import msgspec
 from starlette.datastructures import Headers, MutableHeaders
@@ -39,6 +41,30 @@ _ACCEPTABLE: dict[str, MediaType] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class ETag:
+    value: str
+    weak: bool = True
+
+    @classmethod
+    def from_header(cls, tag: str) -> Self | None:
+        value = tag.strip()
+        is_weak = value.startswith("W/")
+        if is_weak:
+            value = value.removeprefix("W/").strip()
+        if len(value) < 2 or not value.startswith('"') or not value.endswith('"'):
+            return None
+        return cls(value, weak=is_weak)
+
+    def __str__(self) -> str:
+        return f"W/{self.value}" if self.weak else self.value
+
+    def matches(self, other: Self, *, weak: bool = True) -> bool:
+        if not weak and (self.weak or other.weak):
+            return False
+        return self.value == other.value
+
+
 def _parse_accept_entry(value: str) -> tuple[float, int, str]:
     type_, _, q_factor = value.strip().partition(";q=")
     try:
@@ -62,16 +88,39 @@ def get_response_media_type(accept_header: str | None) -> MediaType:
 class ResponseHeaders(MutableHeaders):
     def update_changed(self, mtime: float) -> None:
         self["last-modified"] = formatdate(mtime, usegmt=True)
-        etag = f'"{md5(str(mtime).encode(), usedforsecurity=False).hexdigest()}"'
-        self["etag"] = f"W/{etag}"
+        etag = ETag(f'"{md5(str(mtime).encode(), usedforsecurity=False).hexdigest()}"')
+        self["etag"] = str(etag)
+
+
+def _parse_etags(value: str) -> tuple[bool, list[ETag]]:
+    has_wildcard = False
+    tags: list[ETag] = []
+    for raw_tag in value.split(","):
+        tag = raw_tag.strip()
+        if tag == "*":
+            has_wildcard = True
+            continue
+        if parsed := ETag.from_header(tag):
+            tags.append(parsed)
+    return has_wildcard, tags
 
 
 def handle_conditional_request(request_headers: Headers, response_headers: Headers) -> None:
+    current_etag = ETag.from_header(response_headers["etag"])
+    assert current_etag is not None
+
     try:
-        if_none_match = request_headers["if-none-match"]
-        etag = response_headers["etag"].removeprefix("W/")
-        if etag in [tag.strip(" W/") for tag in if_none_match.split(",")]:
+        has_wildcard, match_etags = _parse_etags(request_headers["if-match"])
+        if not has_wildcard and not any(tag.matches(current_etag, weak=False) for tag in match_etags):
+            raise HTTPException(HTTP_412_PRECONDITION_FAILED, headers=response_headers)
+    except KeyError:
+        pass
+
+    try:
+        has_wildcard, none_match_etags = _parse_etags(request_headers["if-none-match"])
+        if has_wildcard or any(tag.matches(current_etag) for tag in none_match_etags):
             raise HTTPException(HTTP_304_NOT_MODIFIED, headers=response_headers)
+        return
     except KeyError:
         pass
 
@@ -80,14 +129,6 @@ def handle_conditional_request(request_headers: Headers, response_headers: Heade
         latest_upload = parsedate(response_headers["last-modified"])
         if if_modified_since is not None and latest_upload is not None and if_modified_since >= latest_upload:
             raise HTTPException(HTTP_304_NOT_MODIFIED, headers=response_headers)
-    except KeyError:
-        pass
-
-    try:
-        if_match = request_headers["if-match"]
-        etag = response_headers["etag"].removeprefix("W/")
-        if etag != if_match.strip("W/"):
-            raise HTTPException(HTTP_412_PRECONDITION_FAILED, headers=response_headers)
     except KeyError:
         pass
 

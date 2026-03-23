@@ -34,7 +34,13 @@ def test_etag_if_none_match_outdated(client: TestClient):
 
 def test_etag_if_match(client: TestClient, current_headers: dict[str, str]):
     r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Match": current_headers["etag"]})
-    assert r.status_code == HTTP_200_OK
+    assert r.status_code == HTTP_412_PRECONDITION_FAILED
+
+
+def test_etag_if_match_strong_tag_for_weak_resource_etag(client: TestClient, current_headers: dict[str, str]):
+    strong_etag = current_headers["etag"].removeprefix("W/")
+    r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Match": strong_etag})
+    assert r.status_code == HTTP_412_PRECONDITION_FAILED
 
 
 def test_etag_if_match_outdated(client: TestClient):
@@ -52,4 +58,40 @@ def test_if_modified_since(client: TestClient, current_headers: dict[str, str]):
 
 def test_if_modified_since_outdated(client: TestClient, current_headers: dict[str, str]):
     r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Modified-Since": formatdate(0)})
+    assert r.status_code == HTTP_200_OK
+
+
+def test_if_none_match_takes_precedence_over_if_modified_since(
+    client: TestClient, current_headers: dict[str, str]
+):
+    r = client.head(
+        "/simple/",
+        headers={
+            "Accept": MediaType.JSON_V1,
+            "If-None-Match": '"outdated"',
+            "If-Modified-Since": current_headers["last-modified"],
+        },
+    )
+    assert r.status_code == HTTP_200_OK
+
+
+def test_if_match_takes_precedence_over_if_none_match(client: TestClient, current_headers: dict[str, str]):
+    r = client.head(
+        "/simple/",
+        headers={
+            "Accept": MediaType.JSON_V1,
+            "If-Match": current_headers["etag"],
+            "If-None-Match": current_headers["etag"],
+        },
+    )
+    assert r.status_code == HTTP_412_PRECONDITION_FAILED
+
+
+def test_etag_if_none_match_star(client: TestClient):
+    r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-None-Match": "*"})
+    assert r.status_code == HTTP_304_NOT_MODIFIED
+
+
+def test_etag_if_match_star(client: TestClient):
+    r = client.head("/simple/", headers={"Accept": MediaType.JSON_V1, "If-Match": "*"})
     assert r.status_code == HTTP_200_OK
