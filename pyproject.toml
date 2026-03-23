@@ -38,7 +38,7 @@ dev = [
     "ruff>=0.9.6",
 ]
 
-[tool.pytest.ini_options]
+[tool.pytest]
 addopts = [
     "--cov=pypi_simple_server",
     "--import-mode=importlib",
