@@ -1,13 +1,16 @@
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Self
 
 import jwt
+import jwt.types  # type: ignore[unresolved-attribute]
 import msgspec
 
 from . import config
 
 
 class JWTClaims(msgspec.Struct, omit_defaults=True):
+    id: str
     sub: str
     scope: list[str] | str
     exp: int | float | None = None
@@ -15,6 +18,7 @@ class JWTClaims(msgspec.Struct, omit_defaults=True):
 
 
 class AuthContext(msgspec.Struct, frozen=True):
+    token_id: str
     user: str
     scope: list[str]
     max_upload_size: int | None = None
@@ -25,19 +29,20 @@ class AuthContext(msgspec.Struct, frozen=True):
         if not token or not secret:
             return None
 
+        options = jwt.types.Options(require=["id", "sub", "scope"])  # type: ignore[unresolved-attribute]
         try:
-            claims_raw = jwt.decode(
-                token,
-                secret,
-                algorithms=["HS256"],
-                options={"require": ["sub", "scope"]},
-            )
+            claims_raw = jwt.decode(token, secret, algorithms=["HS256"], options=options)
             claims = msgspec.convert(claims_raw, type=JWTClaims)
-        except (jwt.InvalidTokenError, msgspec.ValidationError):
+        except jwt.InvalidTokenError, msgspec.ValidationError:
             return None
 
         scope = claims.scope.split() if isinstance(claims.scope, str) else claims.scope
-        return cls(user=claims.sub, scope=scope, max_upload_size=claims.max_upload_size)
+        return cls(
+            token_id=claims.id,
+            user=claims.sub,
+            scope=scope,
+            max_upload_size=claims.max_upload_size,
+        )
 
 
 def create_jwt(
@@ -47,19 +52,21 @@ def create_jwt(
     secret: str | None = None,
     expires_in: int | None = None,
     max_upload_size: int | None = None,
-) -> str:
+) -> tuple[bytes, str]:
     secret = config.UPLOAD_JWT_SECRET if secret is None else secret
     if not secret:
         raise ValueError("Missing JWT secret")
 
+    expires = None
+    if expires_in is not None:
+        expires = (datetime.now(UTC) + timedelta(seconds=expires_in)).timestamp()
+
     claims = JWTClaims(
+        id=secrets.token_urlsafe(8),
         sub=user,
         scope=scope,
-        exp=(
-            (datetime.now(UTC) + timedelta(seconds=expires_in)).timestamp()
-            if expires_in is not None
-            else None
-        ),
+        exp=expires,
         max_upload_size=max_upload_size,
     )
-    return jwt.encode(msgspec.to_builtins(claims), secret, algorithm="HS256")
+    token = jwt.encode(msgspec.to_builtins(claims), secret, algorithm="HS256")
+    return token, claims.id

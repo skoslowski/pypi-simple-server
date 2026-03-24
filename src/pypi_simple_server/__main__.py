@@ -1,5 +1,6 @@
 import argparse
 import re
+import sys
 from collections.abc import Sequence
 
 from .auth import create_jwt
@@ -86,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def create_token(args: argparse.Namespace) -> int:
     try:
-        token = create_jwt(
+        token, token_id = create_jwt(
             user=args.user,
             scope=args.scope,
             secret=args.secret,
@@ -96,6 +97,7 @@ def create_token(args: argparse.Namespace) -> int:
     except Exception as e:
         raise SystemExit(e)
 
+    print(f"Token-ID = {token_id}", file=sys.stderr)
     print(token)
     return 0
 

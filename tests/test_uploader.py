@@ -12,9 +12,10 @@ from starlette.status import (
     HTTP_401_UNAUTHORIZED,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
 )
-from starlette.testclient import TestClient
 
 from pypi_simple_server.uploader import UploadError, UploadForm
+
+from .support import AppClient
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def _upload_sdist_payload(downloads: Path) -> tuple[dict[str, str], dict[str, tu
     return fields, files, content
 
 
-def test_legacy_upload_rejects_non_multipart(client: TestClient):
+def test_legacy_upload_rejects_non_multipart(client: AppClient):
     response = client.post(
         "/legacy/",
         content=b"not multipart",
@@ -81,7 +82,7 @@ def test_legacy_upload_rejects_non_multipart(client: TestClient):
     assert response.json() == {"error": "Expected multipart/form-data"}
 
 
-def test_legacy_upload_rejects_unauthorized(client: TestClient, downloads: Path, upload_dir: Path):
+def test_legacy_upload_rejects_unauthorized(client: AppClient, downloads: Path, upload_dir: Path):
     fields, files, _ = _upload_payload(downloads)
 
     response = client.post("/legacy/", data=fields, files=files)
@@ -91,7 +92,7 @@ def test_legacy_upload_rejects_unauthorized(client: TestClient, downloads: Path,
     assert not upload_dir.exists()
 
 
-def test_legacy_upload_saves_wheel_and_returns_hashes(client: TestClient, downloads: Path, upload_dir: Path):
+def test_legacy_upload_saves_wheel_and_returns_hashes(client: AppClient, downloads: Path, upload_dir: Path):
     fields, files, content = _upload_payload(downloads)
 
     response = client.post(
@@ -120,7 +121,7 @@ def test_legacy_upload_saves_wheel_and_returns_hashes(client: TestClient, downlo
     assert upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl").read_bytes() == content
 
 
-def test_legacy_upload_rejects_project_outside_scope(client: TestClient, downloads: Path, upload_dir: Path):
+def test_legacy_upload_rejects_project_outside_scope(client: AppClient, downloads: Path, upload_dir: Path):
     fields, files, _ = _upload_payload(downloads)
 
     response = client.post(
@@ -139,7 +140,7 @@ def test_legacy_upload_rejects_project_outside_scope(client: TestClient, downloa
 
 
 def test_legacy_upload_rejects_bad_digest_without_persisting_file(
-    client: TestClient, downloads: Path, upload_dir: Path
+    client: AppClient, downloads: Path, upload_dir: Path
 ):
     fields, files, _ = _upload_payload(downloads)
     fields["sha256_digest"] = "0" * 64
@@ -160,7 +161,7 @@ def test_legacy_upload_rejects_bad_digest_without_persisting_file(
     assert not upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl.part").exists()
 
 
-def test_legacy_upload_rejects_token_max_upload_size(client: TestClient, downloads: Path, upload_dir: Path):
+def test_legacy_upload_rejects_token_max_upload_size(client: AppClient, downloads: Path, upload_dir: Path):
     fields, files, content = _upload_payload(downloads)
 
     response = client.post(
@@ -181,7 +182,7 @@ def test_legacy_upload_rejects_token_max_upload_size(client: TestClient, downloa
     assert not upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl.part").exists()
 
 
-def test_legacy_upload_saves_sdist_and_returns_hashes(client: TestClient, downloads: Path, upload_dir: Path):
+def test_legacy_upload_saves_sdist_and_returns_hashes(client: AppClient, downloads: Path, upload_dir: Path):
     fields, files, content = _upload_sdist_payload(downloads)
 
     response = client.post(
@@ -264,7 +265,7 @@ def test_upload_form_rejects_sdist_without_source_pyversion(downloads: Path):
         form._validate_legacy_fields()
 
 
-def test_legacy_upload_rejects_expired_jwt(client: TestClient, downloads: Path, upload_dir: Path):
+def test_legacy_upload_rejects_expired_jwt(client: AppClient, downloads: Path, upload_dir: Path):
     fields, files, _ = _upload_payload(downloads)
 
     response = client.post(

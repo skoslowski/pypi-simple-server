@@ -22,10 +22,13 @@ def test_create_token_outputs_token(capsys: pytest.CaptureFixture[str]):
     )
 
     assert exit_code == 0
-    token = capsys.readouterr().out.strip()
+    captured = capsys.readouterr()
+    token = captured.out.strip()
     claims = jwt.decode(token, "secret-0123456789abcdef0123456789", algorithms=["HS256"])
+    assert captured.err.strip() == f"Token-ID = {claims['id']}"
     assert claims["sub"] == "ci"
     assert claims["scope"] == ["pytest", "my-org-*"]
+    assert claims["id"]
 
 
 def test_create_token_supports_expiration(capsys: pytest.CaptureFixture[str]):
@@ -53,6 +56,7 @@ def test_create_token_supports_expiration(capsys: pytest.CaptureFixture[str]):
         options={"verify_exp": False},
     )
     assert before + (7 * 24 * 60 * 60) - 10 <= claims["exp"] <= before + (7 * 24 * 60 * 60) + 10
+    assert claims["id"]
 
 
 def test_create_token_supports_max_upload_size(capsys: pytest.CaptureFixture[str]):
@@ -78,6 +82,7 @@ def test_create_token_supports_max_upload_size(capsys: pytest.CaptureFixture[str
         options={"verify_exp": False},
     )
     assert claims["max_upload_size"] == 10 * 1024 * 1024
+    assert claims["id"]
 
 
 def test_create_token_supports_gigabyte_suffix(capsys: pytest.CaptureFixture[str]):
@@ -103,6 +108,7 @@ def test_create_token_supports_gigabyte_suffix(capsys: pytest.CaptureFixture[str
         options={"verify_exp": False},
     )
     assert claims["max_upload_size"] == 2 * 1024 * 1024 * 1024
+    assert claims["id"]
 
 
 def test_create_token_requires_secret():

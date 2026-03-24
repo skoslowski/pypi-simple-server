@@ -37,7 +37,9 @@ async def legacy_upload(request: Request) -> Response:
         )
 
     token = _authenticate(request)
-    if not token:
+    if token:
+        logger.info("Upload authenticated: user=%s token_id=%s", token.user, token.token_id)
+    else:
         logger.warning("Upload rejected: unauthorized")
         return JSONResponse({"error": "Unauthorized"}, status_code=HTTP_401_UNAUTHORIZED)
 
@@ -45,12 +47,11 @@ async def legacy_upload(request: Request) -> Response:
         m = UploadForm.from_form_data(await request.form())
         hash_type, hash_value = m.preferred_digests()
         logger.info(
-            "Upload started filename=%s name=%s version=%s hash_type=%s token=%s",
+            "Upload started: filename=%s name=%s version=%s hash_type=%s",
             m.filename,
             m.name,
             m.version,
             hash_type,
-            token.user,
         )
 
         _require(
@@ -72,7 +73,6 @@ async def legacy_upload(request: Request) -> Response:
             dest_tmp.replace(dest)
         finally:
             dest_tmp.unlink(missing_ok=True)
-        logger.info("Upload completed filename=%s bytes=%s", m.filename, hashes["bytes"])
 
         return JSONResponse(
             {
@@ -103,6 +103,9 @@ async def legacy_upload(request: Request) -> Response:
             {"ok": False, "error": "Unexpected error"},
             status_code=HTTP_400_BAD_REQUEST,
         )
+
+    else:
+        logger.info("Upload completed: filename=%s bytes=%s", m.filename, hashes["bytes"])
 
 
 class UploadError(Exception):

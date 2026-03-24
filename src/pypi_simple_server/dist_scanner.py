@@ -96,8 +96,8 @@ class ProjectFileReader:
         try:
             metadata_content = read_project_metadata(file)
             metadata, _ = parse_email(metadata_content)
-            project = canonicalize_name(metadata["name"])  # type: ignore
-            version = canonicalize_version(metadata["version"])  # type: ignore
+            project = canonicalize_name(metadata["name"])
+            version = canonicalize_version(metadata["version"])
         except ProjectReaderError:
             raise
         except Exception as e:
