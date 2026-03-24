@@ -1,6 +1,6 @@
 [project]
 name = "pypi-simple-server"
-version = "2.3.1"
+version = "2.4.1"
 description = 'Simple PEP503 index for python packages'
 authors = [
   {name = "Sebastian Koslowski", email = "s.koslowski@procitec.de"},
@@ -38,7 +38,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest>=8.3.4",
     "ruff>=0.9.6",
-    "types-pyjwt>=1.7.1",
+    "ty>=0.0.24",
 ]
 
 [tool.pytest]
