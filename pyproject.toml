@@ -1,6 +1,6 @@
 [project]
 name = "pypi-simple-server"
-version = "2.4.1"
+version = "2.5.0"
 description = 'Simple PEP503 index for python packages'
 authors = [
   {name = "Sebastian Koslowski", email = "s.koslowski@procitec.de"},

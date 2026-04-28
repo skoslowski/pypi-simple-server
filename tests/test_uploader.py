@@ -27,7 +27,9 @@ def upload_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return upload_dir
 
 
-def _upload_payload(downloads: Path) -> tuple[dict[str, str], dict[str, tuple[str, bytes, str]], bytes]:
+def _upload_payload(
+    downloads: Path, *, filename: str = "pytest-8.3.4-1-py3-none-any.whl"
+) -> tuple[dict[str, str], dict[str, tuple[str, bytes, str]], bytes]:
     content = downloads.joinpath("pytest-8.3.4-py3-none-any.whl").read_bytes()
     fields = {
         ":action": "file_upload",
@@ -41,7 +43,7 @@ def _upload_payload(downloads: Path) -> tuple[dict[str, str], dict[str, tuple[st
     }
     files = {
         "content": (
-            "pytest-8.3.4-py3-none-any.whl",
+            filename,
             content,
             "application/octet-stream",
         )
@@ -58,12 +60,12 @@ def _upload_sdist_payload(downloads: Path) -> tuple[dict[str, str], dict[str, tu
         "pyversion": "source",
         "metadata_version": "2.4",
         "name": "pytest",
-        "version": "8.3.4",
+        "version": "8.3.5",
         "sha256_digest": hashlib.sha256(content).hexdigest(),
     }
     files = {
         "content": (
-            "pytest-8.3.4.tar.gz",
+            "pytest-8.3.5.tar.gz",
             content,
             "application/gzip",
         )
@@ -108,7 +110,7 @@ def test_legacy_upload_saves_wheel_and_returns_hashes(client: AppClient, downloa
         "name": "pytest",
         "version": "8.3.4",
         "metadata_version": "2.4",
-        "filename": "pytest-8.3.4-py3-none-any.whl",
+        "filename": "pytest-8.3.4-1-py3-none-any.whl",
         "bytes": len(content),
         "computed": {
             "sha256_digest": hashlib.sha256(content).hexdigest(),
@@ -118,7 +120,52 @@ def test_legacy_upload_saves_wheel_and_returns_hashes(client: AppClient, downloa
             .rstrip("="),
         },
     }
-    assert upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl").read_bytes() == content
+    assert upload_dir.joinpath("pytest-8.3.4-1-py3-none-any.whl").read_bytes() == content
+
+
+def test_legacy_upload_rejects_existing_filename_without_overwriting(
+    client: AppClient, downloads: Path, upload_dir: Path
+):
+    fields, files, _ = _upload_payload(downloads)
+    existing_content = b"already uploaded"
+    existing_file = upload_dir / "pytest-8.3.4-1-py3-none-any.whl"
+    upload_dir.mkdir()
+    existing_file.write_bytes(existing_content)
+
+    response = client.post(
+        "/legacy/",
+        data=fields,
+        files=files,
+        headers={"Authorization": client.make_upload_auth(scope=["pytest"])},
+    )
+
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert response.json() == {
+        "ok": False,
+        "error": "File already exists. See https://pypi.org/help/#file-name-reuse",
+    }
+    assert existing_file.read_bytes() == existing_content
+    assert not upload_dir.joinpath("pytest-8.3.4-1-py3-none-any.whl.part").exists()
+
+
+def test_legacy_upload_rejects_filename_known_to_database(
+    client: AppClient, downloads: Path, upload_dir: Path
+):
+    fields, files, _ = _upload_payload(downloads, filename="pytest-8.3.4-py3-none-any.whl")
+
+    response = client.post(
+        "/legacy/",
+        data=fields,
+        files=files,
+        headers={"Authorization": client.make_upload_auth(scope=["pytest"])},
+    )
+
+    assert response.status_code == HTTP_400_BAD_REQUEST
+    assert response.json() == {
+        "ok": False,
+        "error": "File already exists. See https://pypi.org/help/#file-name-reuse",
+    }
+    assert not upload_dir.exists()
 
 
 def test_legacy_upload_rejects_project_outside_scope(client: AppClient, downloads: Path, upload_dir: Path):
@@ -157,8 +204,8 @@ def test_legacy_upload_rejects_bad_digest_without_persisting_file(
         "ok": False,
         "error": "sha256_hex does not match uploaded file",
     }
-    assert not upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl").exists()
-    assert not upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl.part").exists()
+    assert not upload_dir.joinpath("pytest-8.3.4-1-py3-none-any.whl").exists()
+    assert not upload_dir.joinpath("pytest-8.3.4-1-py3-none-any.whl.part").exists()
 
 
 def test_legacy_upload_rejects_token_max_upload_size(client: AppClient, downloads: Path, upload_dir: Path):
@@ -178,8 +225,8 @@ def test_legacy_upload_rejects_token_max_upload_size(client: AppClient, download
         "ok": False,
         "error": f"File too large (>{len(content) - 1} bytes)",
     }
-    assert not upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl").exists()
-    assert not upload_dir.joinpath("pytest-8.3.4-py3-none-any.whl.part").exists()
+    assert not upload_dir.joinpath("pytest-8.3.4-1-py3-none-any.whl").exists()
+    assert not upload_dir.joinpath("pytest-8.3.4-1-py3-none-any.whl.part").exists()
 
 
 def test_legacy_upload_saves_sdist_and_returns_hashes(client: AppClient, downloads: Path, upload_dir: Path):
@@ -196,9 +243,9 @@ def test_legacy_upload_saves_sdist_and_returns_hashes(client: AppClient, downloa
     assert response.json() == {
         "ok": True,
         "name": "pytest",
-        "version": "8.3.4",
+        "version": "8.3.5",
         "metadata_version": "2.4",
-        "filename": "pytest-8.3.4.tar.gz",
+        "filename": "pytest-8.3.5.tar.gz",
         "bytes": len(content),
         "computed": {
             "sha256_digest": hashlib.sha256(content).hexdigest(),
@@ -208,7 +255,7 @@ def test_legacy_upload_saves_sdist_and_returns_hashes(client: AppClient, downloa
             .rstrip("="),
         },
     }
-    assert upload_dir.joinpath("pytest-8.3.4.tar.gz").read_bytes() == content
+    assert upload_dir.joinpath("pytest-8.3.5.tar.gz").read_bytes() == content
 
 
 def test_upload_form_prefers_sha256_over_md5(downloads: Path):

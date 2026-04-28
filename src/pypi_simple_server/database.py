@@ -63,6 +63,13 @@ CHECK_DIST = """
     WHERE "filename" = ?
 """
 
+CHECK_DIST_EXISTS = """
+    SELECT 1
+    FROM Distribution
+    WHERE "filename" = ?
+    LIMIT 1
+"""
+
 LIST_DISTS = """
     SELECT "filename", "index", "sha256"
     FROM Distribution
@@ -208,6 +215,13 @@ class Database:
                     detail.files.append(dist)
             detail.versions = sorted(set(detail.versions))
             return detail
+
+        return await to_thread.run_sync(run, limiter=self._limiter)
+
+    async def distribution_exists(self, filename: str) -> bool:
+        def run() -> bool:
+            with self._get_connection() as con:
+                return con.execute(CHECK_DIST_EXISTS, (filename,)).fetchone() is not None
 
         return await to_thread.run_sync(run, limiter=self._limiter)
 

@@ -23,6 +23,7 @@ from starlette.status import (
 
 from .auth import AuthContext
 from .config import UPLOAD_DIR, UPLOAD_MAX_BYTES
+from .database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,15 @@ async def legacy_upload(request: Request) -> Response:
             "Not authorized to upload files for this project",
         )
 
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         dest = UPLOAD_DIR / m.filename
+
+        database: Database = request.state.database
+        _require(
+            not dest.exists() and not await database.distribution_exists(dest.name),
+            "File already exists. See https://pypi.org/help/#file-name-reuse",
+        )
+
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         dest_tmp = dest.with_suffix(dest.suffix + ".part")
 
         try:

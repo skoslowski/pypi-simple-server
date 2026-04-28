@@ -85,6 +85,13 @@ def test_static_files(context: Context):
     assert context.list_files() == DEFAULT_FILES
 
 
+def test_distribution_exists(context: Context):
+    assert context.update() == DEFAULT_STATS
+
+    assert asyncio.run(context.database.distribution_exists("pytest-8.3.4-py3-none-any.whl"))
+    assert not asyncio.run(context.database.distribution_exists("pytest-8.3.5-py3-none-any.whl"))
+
+
 def test_new_index(context: Context):
     rename = list(context.base_dir.rglob("ext/*"))
     with rename_files(rename):

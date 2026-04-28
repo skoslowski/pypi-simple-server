@@ -1,6 +1,5 @@
 import logging
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from pathlib import Path
 
 from packaging.utils import canonicalize_name
@@ -21,7 +20,6 @@ from .templates import TemplateResponse
 from .uploader import legacy_upload
 
 logger = logging.getLogger(__name__)
-database = Database(CACHE_FILE)
 static_files = StaticFilesDirGenerator(directory=FILES_DIR)
 response_headers = ResponseHeaders(
     {
@@ -42,6 +40,7 @@ if not logging.root.hasHandlers():  # pragma: no cover
 async def simple_index(request: Request) -> Response:
     handle_conditional_request(request.headers, response_headers)
     index: str = request.path_params.get("index", "")
+    database: Database = request.state.database
 
     project_list = await database.get_project_list(index)
     if not project_list.projects:
@@ -54,6 +53,7 @@ async def simple_detail(request: Request) -> Response:
     handle_conditional_request(request.headers, response_headers)
     index: str = request.path_params.get("index", "")
     project_raw: str = request.path_params["project"]
+    database: Database = request.state.database
 
     project = canonicalize_name(project_raw)
     if project_raw != project:
@@ -76,6 +76,7 @@ async def ping(request: Request) -> PlainTextResponse:
 async def web_index(request: Request) -> Response:
     handle_conditional_request(request.headers, response_headers)
     index: str = request.path_params.get("index", "")
+    database: Database = request.state.database
 
     project_list = await database.get_project_list(index)
     if not project_list.projects:
@@ -104,6 +105,7 @@ async def web_project(request: Request) -> Response:
     handle_conditional_request(request.headers, response_headers)
     index: str = request.path_params.get("index", "")
     project_raw: str = request.path_params["project"]
+    database: Database = request.state.database
 
     project = canonicalize_name(project_raw)
     if project_raw != project:
@@ -137,16 +139,17 @@ async def lifespan(app: Starlette):
         CACHE_FILE.with_name(CACHE_FILE.name + "-journal"),
     }
     watch.ignore_globs = ["*.part"]
-    with database:
-        yield
+
+    with Database(CACHE_FILE) as database:
+        yield {"database": database}
 
 
 async def _handle_file_change(files: set[Path]) -> None:
     if files and files != {CACHE_FILE}:
         logger.info("Updating database")
-        with replace(database, read_only=False) as db:
+        with Database(CACHE_FILE, read_only=False) as database:
             reader = ProjectFileReader(BASE_DIR, ignore_dirs={static_files.directory})
-            await db.update(reader, static_files)
+            await database.update(reader, static_files)
         logger.info("Completed database update")
 
     if CACHE_FILE in files:
