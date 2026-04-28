@@ -1,0 +1,25 @@
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.15.7"
+hooks = [
+  { id = "ruff-format" },
+  {
+    id = "ruff",
+    name = "ruff-check",
+    args = [ "--fix" ],
+  }
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "ty",
+    name = "ty-check",
+    entry = "uv run ty check --error-on-warning",
+    language = "system",
+    pass_filenames = true,
+    require_serial = true,
+    types_or = ["python", 'pyi'],
+  },
+]

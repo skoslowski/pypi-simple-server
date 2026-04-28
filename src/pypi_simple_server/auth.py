@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Self
 
 import jwt
-import jwt.types  # type: ignore[unresolved-attribute]
+import jwt.types
 import msgspec
 
 from . import config
@@ -29,7 +29,7 @@ class AuthContext(msgspec.Struct, frozen=True):
         if not token or not secret:
             return None
 
-        options = jwt.types.Options(require=["id", "sub", "scope"])  # type: ignore[unresolved-attribute]
+        options = jwt.types.Options(require=["id", "sub", "scope"])
         try:
             claims_raw = jwt.decode(token, secret, algorithms=["HS256"], options=options)
             claims = msgspec.convert(claims_raw, type=JWTClaims)
@@ -52,7 +52,7 @@ def create_jwt(
     secret: str | None = None,
     expires_in: int | None = None,
     max_upload_size: int | None = None,
-) -> tuple[bytes, str]:
+) -> tuple[str, str]:
     secret = config.UPLOAD_JWT_SECRET if secret is None else secret
     if not secret:
         raise ValueError("Missing JWT secret")
