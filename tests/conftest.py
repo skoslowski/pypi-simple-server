@@ -53,6 +53,7 @@ def client(downloads: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterato
 
     with (
         mock.patch.object(config, "CACHE_FILE", tmp_path_factory.mktemp("cache") / "db.sqlite"),
+        mock.patch.object(config, "SUBINDEXES_ENABLED", True),
         mock.patch.object(auth.config, "UPLOAD_JWT_SECRET", JWT_SECRET),
     ):
         from pypi_simple_server.main import app

@@ -9,9 +9,9 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
-from starlette.status import HTTP_404_NOT_FOUND
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
-from .config import BASE_DIR, CACHE_FILE, FILES_DIR, PICOCSS_URL
+from .config import BASE_DIR, CACHE_FILE, FILES_DIR, PICOCSS_URL, SUBINDEXES_ENABLED
 from .database import Database
 from .dist_scanner import FileWatcher, ProjectFileReader
 from .endpoint_utils import ResponseHeaders, get_response, handle_conditional_request
@@ -42,6 +42,9 @@ async def simple_index(request: Request) -> Response:
     index: str = request.path_params.get("index", "")
     database: Database = request.state.database
 
+    if index and not SUBINDEXES_ENABLED:
+        return Response("Sub-index API disabled", HTTP_403_FORBIDDEN)
+
     project_list = await database.get_project_list(index)
     if not project_list.projects:
         raise HTTPException(HTTP_404_NOT_FOUND)
@@ -54,6 +57,9 @@ async def simple_detail(request: Request) -> Response:
     index: str = request.path_params.get("index", "")
     project_raw: str = request.path_params["project"]
     database: Database = request.state.database
+
+    if index and not SUBINDEXES_ENABLED:
+        return Response("Sub-index API disabled", HTTP_403_FORBIDDEN)
 
     project = canonicalize_name(project_raw)
     if project_raw != project:

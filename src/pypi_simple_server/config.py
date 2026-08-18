@@ -17,3 +17,5 @@ PICOCSS_URL = config("PICOCSS_URL", default="https://cdn.jsdelivr.net/npm/@picoc
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_MAX_BYTES = config("UPLOAD_MAX_BYTES", cast=int, default=200 * 1024 * 1024)
 UPLOAD_JWT_SECRET = config("UPLOAD_JWT_SECRET", default="")
+
+SUBINDEXES_ENABLED = config("SUBINDEXES_ENABLED", cast=bool, default=False)
