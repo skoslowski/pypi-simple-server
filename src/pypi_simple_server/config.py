@@ -19,3 +19,6 @@ UPLOAD_MAX_BYTES = config("UPLOAD_MAX_BYTES", cast=int, default=200 * 1024 * 102
 UPLOAD_JWT_SECRET = config("UPLOAD_JWT_SECRET", default="")
 
 SUBINDEXES_ENABLED = config("SUBINDEXES_ENABLED", cast=bool, default=False)
+
+INDEX_UPDATED_HOOK_URL = config("INDEX_UPDATED_HOOK_URL", default="")
+INDEX_UPDATED_HOOK_TIMEOUT = config("INDEX_UPDATED_HOOK_TIMEOUT", cast=float, default=5.0)

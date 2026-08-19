@@ -1,6 +1,10 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 from packaging.utils import canonicalize_name
 from starlette.applications import Starlette
@@ -11,7 +15,15 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
-from .config import BASE_DIR, CACHE_FILE, FILES_DIR, PICOCSS_URL, SUBINDEXES_ENABLED
+from .config import (
+    BASE_DIR,
+    CACHE_FILE,
+    FILES_DIR,
+    INDEX_UPDATED_HOOK_TIMEOUT,
+    INDEX_UPDATED_HOOK_URL,
+    PICOCSS_URL,
+    SUBINDEXES_ENABLED,
+)
 from .database import Database
 from .dist_scanner import FileWatcher, ProjectFileReader
 from .endpoint_utils import ResponseHeaders, get_response, handle_conditional_request
@@ -23,7 +35,7 @@ logger = logging.getLogger(__name__)
 static_files = StaticFilesDirGenerator(directory=FILES_DIR)
 response_headers = ResponseHeaders(
     {
-        "Cache-Control": "max-age=600, public",
+        "Cache-Control": "max-age=60, public",
         "Vary": "Accept, Accept-Encoding",
     }
 )
@@ -138,7 +150,7 @@ async def web_project(request: Request) -> Response:
 async def lifespan(app: Starlette):
     CACHE_FILE.parent.mkdir(exist_ok=True, parents=True)
 
-    await _handle_file_change({CACHE_FILE, BASE_DIR})
+    await _handle_file_change({CACHE_FILE, BASE_DIR}, enable_hook=False)
     watch = FileWatcher(BASE_DIR, _handle_file_change)
     watch.ignore = {
         static_files.directory,
@@ -150,7 +162,7 @@ async def lifespan(app: Starlette):
         yield {"database": database}
 
 
-async def _handle_file_change(files: set[Path]) -> None:
+async def _handle_file_change(files: set[Path], *, enable_hook: bool = True) -> None:
     if files and files != {CACHE_FILE}:
         logger.info("Updating database")
         with Database(CACHE_FILE, read_only=False) as database:
@@ -160,7 +172,31 @@ async def _handle_file_change(files: set[Path]) -> None:
 
     if CACHE_FILE in files:
         logger.info("Updating response headers after database update")
-        response_headers.update_changed(CACHE_FILE.stat().st_mtime)
+        has_changed = response_headers.update_changed(CACHE_FILE.stat().st_mtime)
+        if enable_hook and has_changed:
+            await _index_updated_hook()
+
+
+async def _index_updated_hook() -> None:
+    if not INDEX_UPDATED_HOOK_URL:
+        return
+
+    def run() -> None:
+        request = UrlRequest(INDEX_UPDATED_HOOK_URL, method="PURGE")
+        try:
+            with urlopen(request, timeout=INDEX_UPDATED_HOOK_TIMEOUT):
+                pass
+        except HTTPError as e:
+            if e.code not in {404, 412}:
+                raise
+            e.close()
+
+    try:
+        await asyncio.to_thread(run)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Index updated hook: error=%s", e)
+    else:
+        logger.info("Index updated hook called successfully")
 
 
 routes = [

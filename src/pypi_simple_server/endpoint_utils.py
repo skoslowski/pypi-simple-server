@@ -86,10 +86,12 @@ def get_response_media_type(accept_header: str | None) -> MediaType:
 
 
 class ResponseHeaders(MutableHeaders):
-    def update_changed(self, mtime: float) -> None:
+    def update_changed(self, mtime: float) -> bool:
         self["last-modified"] = formatdate(mtime, usegmt=True)
+        etag_before = self.get("etag")
         etag = ETag(f'"{md5(str(mtime).encode(), usedforsecurity=False).hexdigest()}"')
         self["etag"] = str(etag)
+        return self["etag"] == etag_before
 
 
 def _parse_etags(value: str) -> tuple[bool, list[ETag]]:
