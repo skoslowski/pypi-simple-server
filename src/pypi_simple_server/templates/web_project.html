@@ -48,7 +48,7 @@
             {{ project.files | sum("size") | naturalsize }} &#128313;
             <a href="https://pypi.org/project/{{ project.name }}">pypi.org</a>
         </p>
-        {%- for version, files in project.files | groupby("version") | reverse %}
+        {%- for version, files in project_files_per_version %}
         <h4>Version {{version}}</h4>
         <ul>
             {%- for file in files %}

@@ -15,6 +15,7 @@ import watchfiles
 from packaging.metadata import parse_email
 from packaging.utils import (
     NormalizedName,
+    Version,
     canonicalize_name,
     canonicalize_version,
     parse_sdist_filename,
@@ -166,3 +167,31 @@ class FileWatcher:
                 logger.exception("File watch callback failed")
         finally:
             self._next_callback_time = None
+
+
+def group_by_version(files: list[ProjectFile]) -> list[tuple[str, list[ProjectFile]]]:
+    NO_VERSION = Version("0")
+
+    versioned_files: dict[Version, list[ProjectFile]] = {}
+    for file in files:
+        try:
+            if file.filename.endswith(".whl"):
+                _name, version, *_ = parse_wheel_filename(file.filename)
+            elif file.filename.endswith(".tar.gz"):
+                _name, version = parse_sdist_filename(file.filename)
+            else:
+                raise UnhandledFileTypeError(f"Can't handle type {file.filename}")
+
+        except Exception:
+            logger.exception(f"Failed to parse version from filename {file.filename}")
+            version = NO_VERSION
+
+        versioned_files.setdefault(version, []).append(file)
+
+    return [
+        (
+            "(unknown)" if version is NO_VERSION else str(version),
+            sorted(files, key=lambda f: f.filename),
+        )
+        for version, files in sorted(versioned_files.items(), key=lambda item: item[0], reverse=True)
+    ]

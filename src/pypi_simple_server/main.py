@@ -25,7 +25,7 @@ from .config import (
     SUBINDEXES_ENABLED,
 )
 from .database import Database
-from .dist_scanner import FileWatcher, ProjectFileReader
+from .dist_scanner import FileWatcher, ProjectFileReader, group_by_version
 from .endpoint_utils import ResponseHeaders, get_response, handle_conditional_request
 from .static_files_gen import StaticFilesDirGenerator
 from .templates import TemplateResponse
@@ -142,6 +142,7 @@ async def web_project(request: Request) -> Response:
         "root": {"href": request.url_for("web_index_root")},
         "index": ({"name": index, "href": index_href}),
         "project": project_details,
+        "project_files_per_version": group_by_version(project_details.files),
     }
     return TemplateResponse(request, "web_project.html", context=context, headers=response_headers)
 
