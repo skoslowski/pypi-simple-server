@@ -137,7 +137,7 @@ def _authenticate(request: Request) -> AuthContext | None:
     b64 = auth[len(prefix) :].strip()
     try:
         raw = base64.b64decode(b64).decode("utf-8")
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
     username, sep, password = raw.partition(":")
@@ -209,7 +209,7 @@ class UploadForm(msgspec.Struct, frozen=True):
             else:
                 dist_name, dist_version = parse_sdist_filename(self.filename)
                 artifact_type = "sdist"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             raise UploadError(str(e)) from None
 
         if canonicalize_name(self.name) != canonicalize_name(dist_name):
@@ -310,7 +310,7 @@ async def _stream_to_disk_and_hash(
             if total > max_upload_bytes:
                 raise UploadError(
                     f"File too large (>{max_upload_bytes} bytes)",
-                    413 or HTTP_413_CONTENT_TOO_LARGE,
+                    HTTP_413_CONTENT_TOO_LARGE,
                 )
 
             f.write(chunk)

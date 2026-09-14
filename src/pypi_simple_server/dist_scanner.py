@@ -148,9 +148,7 @@ class FileWatcher:
         filepath = Path(file)
         if filepath in self.ignore or not self.ignore.isdisjoint(filepath.parents):
             return False
-        if any(fnmatch(file, pattern) for pattern in self.ignore_globs):
-            return False
-        return True
+        return not any(fnmatch(file, pattern) for pattern in self.ignore_globs)
 
     async def _run_callback(self) -> None:
         try:
@@ -164,7 +162,7 @@ class FileWatcher:
             logger.info("File watch reporting %d changed files", len(files_changed))
             try:
                 await self.callback(files_changed)
-            except Exception as e:
-                logger.exception("File watch callback failed: %s", e)
+            except Exception:
+                logger.exception("File watch callback failed")
         finally:
             self._next_callback_time = None

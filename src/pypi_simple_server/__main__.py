@@ -94,7 +94,7 @@ def create_token(args: argparse.Namespace) -> int:
             expires_in=args.expires_in,
             max_upload_size=args.max_upload_size,
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise SystemExit(e)
 
     print(f"Token-ID = {token_id}", file=sys.stderr)

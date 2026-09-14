@@ -60,9 +60,9 @@ class ProjectDetail(Struct, kw_only=True):
     # PEP-691
     name: NormalizedProjectName
     # PEP-700
-    versions: list[str] = list()
+    versions: list[str] = []
     # PEP-503
-    files: list[ProjectFile] = list()
+    files: list[ProjectFile] = []
 
 
 class Project(Struct):
@@ -76,4 +76,4 @@ class ProjectList(Struct):
     # PEP-629
     meta: Meta = Meta()
     # PEP-503
-    projects: list[Project] = list()
+    projects: list[Project] = []

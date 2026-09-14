@@ -69,7 +69,7 @@ def _parse_accept_entry(value: str) -> tuple[float, int, str]:
     type_, _, q_factor = value.strip().partition(";q=")
     try:
         priority = max(0.0, min(1.0, float(q_factor)))
-    except Exception:
+    except Exception:  # noqa: BLE001
         priority = 1.0
     specificity = 0 if type_ == "*/*" else 1 if type_.endswith("/*") else 0
     return priority, specificity, type_
@@ -78,7 +78,7 @@ def _parse_accept_entry(value: str) -> tuple[float, int, str]:
 @lru_cache
 def get_response_media_type(accept_header: str | None) -> MediaType:
     """https://packaging.python.org/en/latest/specifications/simple-repository-api/#version-format-selection"""
-    accepts = list(_parse_accept_entry(mt) for mt in (accept_header or "*/*").split(","))
+    accepts = [_parse_accept_entry(mt) for mt in (accept_header or "*/*").split(",")]
     for *_, accept in sorted(accepts, reverse=True):
         if media_type := _ACCEPTABLE.get(accept):
             return media_type

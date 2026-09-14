@@ -4,7 +4,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import KW_ONLY, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Self
 
@@ -180,7 +180,7 @@ class Database:
                     projects=len(stats.projects),
                     files=len(stats.files),
                     total_size=stats.size,
-                    latest_upload=datetime.fromtimestamp(stats.mtime),
+                    latest_upload=datetime.fromtimestamp(stats.mtime, UTC),
                 )
                 for name, stats in sorted(per_index.items())
             }
@@ -244,8 +244,8 @@ def _add_new(
         except UnhandledFileTypeError:
             logger.debug("Ignoring %s", file)
             continue
-        except InvalidFileError as e:
-            logger.exception("Invalid distribution %s: %s", file, e)
+        except InvalidFileError:
+            logger.error("Invalid distribution: %s", file)
             continue
 
         conflicts = (f"{i}{file.name}" for i, h in known if h != file_info.hash)
