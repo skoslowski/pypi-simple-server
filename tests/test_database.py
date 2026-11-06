@@ -1,13 +1,16 @@
 import asyncio
+import os
 import shutil
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from zipfile import ZipFile
 
 import msgspec
 import pytest
+from packaging.utils import NormalizedName
 
 from pypi_simple_server.database import Database, StaticFilesDirGenerator, Stats
 from pypi_simple_server.dist_scanner import ProjectFileReader
@@ -71,7 +74,7 @@ DEFAULT_FILES = {
 
 
 @contextmanager
-def rename_files(files: list[Path]) -> Iterator[None]:
+def rename_files(files: list[Path]) -> Generator[None]:
     renamed = [file.with_name(file.name + "~") for file in files]
     for file, backup in zip(files, renamed):
         file.rename(backup)
@@ -160,3 +163,30 @@ def test_conflicting_dist(context: Context, caplog: pytest.LogCaptureFixture):
 
     assert context.update() == expected_stats
     assert f"Conflicting distribution {dist_to_patch}" in caplog.text
+
+
+def test_new_dist_min_mtime(context: Context):
+    """Test that a wheel added later but with a earlier mtime is reflected in upload_time"""
+    whls = context.find_dists("ext/iniconfig*.whl")
+    assert len(whls) == 1
+    whl = whls[0]
+
+    def get_upload_time() -> datetime:
+        context.update()
+        detail = asyncio.run(context.database.get_project_detail(NormalizedName("iniconfig"), ""))
+        for dist in detail.files:
+            if dist.filename == whl.name:
+                return datetime.fromisoformat(dist.upload_time or "")
+        pytest.fail("no upload time found")
+
+    upload_time_before = get_upload_time()
+
+    whl_new_min_mtime = context.base_dir / "old" / whl.name
+    whl_new_min_mtime.parent.mkdir()
+    shutil.copy(whl, whl_new_min_mtime)
+    mtime = whl.stat().st_mtime - 1000
+    os.utime(whl_new_min_mtime, (mtime, mtime))
+
+    upload_time_after = get_upload_time()
+
+    assert upload_time_before - timedelta(seconds=1000) == upload_time_after

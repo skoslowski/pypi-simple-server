@@ -23,6 +23,7 @@ BUILD_TABLE = """
         "index" TEXT NOT NULL,
         "filename" TEXT NOT NULL,
         "sha256" TEXT NOT NULL,
+        "mtime" REAL,
         "project" TEXT NOT NULL,
         "version" TEXT NOT NULL,
         "file" ProjectFile NOT NULL
@@ -53,7 +54,7 @@ GET_PROJECT_DETAIL = """
     FROM Distribution
     WHERE "project" = ? AND "index" GLOB ?
     GROUP BY "filename"
-    HAVING ROWID = MIN(ROWID)
+    HAVING "mtime" = MIN("mtime")
     ORDER BY "filename"
 """
 
@@ -76,7 +77,11 @@ LIST_DISTS = """
 """
 
 STORE_DIST = """
-    INSERT INTO Distribution VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO Distribution (
+        "index", "filename", "sha256", "mtime",
+        "project", "version", "file"
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 """
 
 REMOVE_DIST = """
@@ -142,6 +147,27 @@ class Database:
         if not self.read_only:
             con.executescript(BUILD_TABLE).close()
         return con
+
+    def run_migrations(self) -> None:
+        assert not self.read_only
+        with self._get_connection() as con:
+            columns = {row[1] for row in con.execute("PRAGMA table_info(Distribution)")}
+            if "mtime" in columns:
+                return
+
+            con.execute('ALTER TABLE Distribution ADD COLUMN "mtime" REAL')
+
+            distributions = con.execute(
+                """SELECT rowid, "file" AS "file [ProjectFile]" FROM Distribution"""
+            ).fetchall()
+
+            con.executemany(
+                'UPDATE Distribution SET "mtime" = ? WHERE rowid = ?',
+                (
+                    (datetime.fromisoformat(file.upload_time).timestamp(), rowid)
+                    for rowid, file in distributions
+                ),
+            )
 
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection]:
@@ -259,6 +285,7 @@ def _add_new(
             index,
             file.name,
             file_info.hash,
+            file_info.mtime,
             file_info.project,
             file_info.version,
             file_info.dist,

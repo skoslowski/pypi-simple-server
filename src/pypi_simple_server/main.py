@@ -159,6 +159,9 @@ async def lifespan(app: Starlette):
     }
     watch.ignore_globs = ["*.part"]
 
+    with Database(CACHE_FILE, read_only=False) as database:
+        database.run_migrations()
+
     with Database(CACHE_FILE) as database:
         yield {"database": database}
 

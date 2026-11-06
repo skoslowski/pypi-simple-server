@@ -74,6 +74,7 @@ class FileResult:
     project: NormalizedName
     version: str
     hash: str
+    mtime: float
     dist: ProjectFile
     metadata: bytes
 
@@ -105,17 +106,18 @@ class ProjectFileReader:
             raise InvalidFileError(file) from e
 
         hashes = _get_file_hashes(file)
+        stat = file.stat()
 
         dist = ProjectFile(
             filename=file.name,
-            size=file.stat().st_size,
+            size=stat.st_size,
             url="",  # filled later
             hashes=hashes,
             requires_python=metadata.get("requires_python"),
             core_metadata=Hashes(sha256=hashlib.sha256(metadata_content).hexdigest()),
-            upload_time=_format_time(file.stat().st_mtime),
+            upload_time=_format_time(stat.st_mtime),
         )
-        return FileResult(project, version, hashes.sha256, dist, metadata_content)
+        return FileResult(project, version, hashes.sha256, stat.st_mtime, dist, metadata_content)
 
 
 def _format_time(timestamp: float) -> str:
