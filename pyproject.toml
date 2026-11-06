@@ -1,12 +1,12 @@
 [project]
 name = "pypi-simple-server"
 version = "2.7.0"
-description = 'Simple PEP503 index for python packages'
-authors = [
-  {name = "Sebastian Koslowski", email = "s.koslowski@procitec.de"},
-]
-license = "MIT"
+description = "Simple PEP503 index for python packages"
 requires-python = ">=3.14"
+license = "MIT"
+authors = [
+  { name = "Sebastian Koslowski", email = "s.koslowski@procitec.de" },
+]
 dependencies = [
   "humanize>=4.12.2",
   "jinja2>=3.1.5",
@@ -19,33 +19,33 @@ dependencies = [
   "watchfiles>=1.0.4",
 ]
 
+[dependency-groups]
+dev = [
+  "httpx2>=2.5.0",
+  "pypi-simple>=1.6.1",
+  "pytest>=8.3.4",
+  "pytest-cov>=6.0.0",
+  "ruff>=0.9.6",
+  "ty>=0.0.24",
+]
+
 [build-system]
 requires = ["uv_build>=0.9.8,<0.10.0"]
 build-backend = "uv_build"
 
-[tool.ruff] # https://beta.ruff.rs/docs/rules
-lint.extend-select = [
-  "I", # isort
-  "UP", # pyupgrade
-  "PT", # flake8-pytest-style
-]
-line-length = 110
-
-[dependency-groups]
-dev = [
-    "httpx2>=2.5.0",
-    "pypi-simple>=1.6.1",
-    "pytest-cov>=6.0.0",
-    "pytest>=8.3.4",
-    "ruff>=0.9.6",
-    "ty>=0.0.24",
-]
-
 [tool.pytest]
 addopts = [
-    "--cov=pypi_simple_server",
-    "--import-mode=importlib",
+  "--cov=pypi_simple_server",
+  "--import-mode=importlib",
 ]
 testpaths = [
-    "tests",
+  "tests",
 ]
+
+[tool.ruff]  # https://beta.ruff.rs/docs/rules
+lint.extend-select = [
+  "I",  # isort
+  "UP",  # pyupgrade
+  "PT",  # flake8-pytest-style
+]
+line-length = 110

@@ -1,7 +1,7 @@
 import logging
 import queue
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import KW_ONLY, dataclass
 from datetime import UTC, datetime
@@ -144,7 +144,7 @@ class Database:
         return con
 
     @contextmanager
-    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+    def _get_connection(self) -> Generator[sqlite3.Connection]:
         con = None
         try:
             try:
